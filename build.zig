@@ -252,6 +252,22 @@ pub fn build(b: *std.Build) void {
     });
     const run_pipeline_tests = b.addRunArtifact(pipeline_tests);
 
+    // Docs generator tests (tests/docs/generator_test.zig)
+    const docs_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/docs/generator_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "docs_gen", .module = b.createModule(.{
+                    .root_source_file = b.path("src/docs/generator.zig"),
+                    .target = target,
+                }) },
+            },
+        }),
+    });
+    const run_docs_tests = b.addRunArtifact(docs_tests);
+
     // A top level step for running all tests. dependOn can be called multiple
     // times and since the two run steps do not depend on one another, this will
     // make the two of them run in parallel.
@@ -264,6 +280,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_rust_tests.step);
     test_step.dependOn(&run_webhook_tests.step);
     test_step.dependOn(&run_pipeline_tests.step);
+    test_step.dependOn(&run_docs_tests.step);
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //
