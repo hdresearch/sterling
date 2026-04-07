@@ -1,4 +1,7 @@
 const std = @import("std");
+const parser = @import("parser/openapi.zig");
+const config = @import("config/config.zig");
+const generator = @import("generator/sdk.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -69,15 +72,33 @@ fn handleGenerate(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("  OpenAPI Spec: {s}\n", .{spec_file.?});
     std.debug.print("  Config: {s}\n", .{config_file.?});
     
-    // TODO: Integrate with parser, generator, and config modules
-    std.debug.print("\nTODO: Implement full generation pipeline\n", .{});
-    std.debug.print("1. Parse OpenAPI specification\n", .{});
-    std.debug.print("2. Load configuration\n", .{});
-    std.debug.print("3. Generate SDKs for each target language\n", .{});
-    std.debug.print("4. Push to configured repositories\n", .{});
-    std.debug.print("5. Generate documentation\n", .{});
-    
-    _ = allocator;
+    // Load OpenAPI spec
+    const spec_content = std.fs.cwd().readFileAlloc(allocator, spec_file.?, 1024 * 1024) catch |err| {
+        std.debug.print("Error reading spec file: {}\n", .{err});
+        return;
+    };
+    defer allocator.free(spec_content);
+
+    // Parse OpenAPI spec
+    const spec = parser.parseOpenAPI(allocator, spec_content) catch |err| {
+        std.debug.print("Error parsing OpenAPI spec: {}\n", .{err});
+        return;
+    };
+
+    // Load configuration
+    const cfg = config.loadConfig(allocator, config_file.?) catch |err| {
+        std.debug.print("Error loading config: {}\n", .{err});
+        return;
+    };
+
+    // Generate SDKs
+    var sdk_generator = generator.SDKGenerator.init(allocator, spec, cfg);
+    sdk_generator.generateAll() catch |err| {
+        std.debug.print("Error generating SDKs: {}\n", .{err});
+        return;
+    };
+
+    std.debug.print("\n✅ SDK generation completed successfully!\n", .{});
 }
 
 fn handleInit(allocator: std.mem.Allocator) !void {
