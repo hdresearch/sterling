@@ -43,7 +43,10 @@ fn printUsage() void {
     std.debug.print("  sterling init && sterling generate --spec api.yaml --config sterling.toml\n", .{});
 }
 
-fn handleGenerate(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn handleGenerate(raw_allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    var arena = std.heap.ArenaAllocator.init(raw_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
     var spec_file: ?[]const u8 = null;
     var config_file: ?[]const u8 = null;
 
