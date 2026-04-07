@@ -1,0 +1,23 @@
+{
+  "name": "{{package_name}}",
+  "version": "{{project_version}}",
+  "description": "TypeScript SDK for {{spec_title}}",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/node": "^20.0.0"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "license": "MIT"
+}

@@ -213,9 +213,17 @@ pub const SDKGenerator = struct {
         // Generate tsconfig.json
         const tsconfig_path = try std.fmt.allocPrint(self.allocator, "{s}/tsconfig.json", .{output_dir});
         defer self.allocator.free(tsconfig_path);
-        try self.renderTemplate("templates/typescript/tsconfig.json.template", tsconfig_path, ctx);        const package_path = try std.fmt.allocPrint(self.allocator, "{s}/package.json", .{output_dir});
+        try self.renderTemplate("templates/typescript/tsconfig.json.template", tsconfig_path, ctx);
+        
+        // Generate package.json
+        const package_path = try std.fmt.allocPrint(self.allocator, "{s}/package.json", .{output_dir});
         defer self.allocator.free(package_path);
         try self.renderTemplate("templates/typescript/package.json.template", package_path, ctx);
+        
+        // Generate README.md
+        const readme_path = try std.fmt.allocPrint(self.allocator, "{s}/README.md", .{output_dir});
+        defer self.allocator.free(readme_path);
+        try self.renderTemplate("templates/typescript/README.md.template", readme_path, ctx);
         
         std.debug.print("Generated TypeScript SDK at {s}\n", .{output_dir});
     }
