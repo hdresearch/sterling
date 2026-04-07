@@ -1,6 +1,12 @@
 const std = @import("std");
 pub const parser = @import("openapi");
 pub const config = @import("config");
+pub const template = @import("template.zig");
+
+/// Load a template file at runtime from the current working directory.
+fn loadTemplate(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+}
 
 pub const SDKGenerator = struct {
     allocator: std.mem.Allocator,
@@ -23,7 +29,7 @@ pub const SDKGenerator = struct {
 
     fn generateTarget(self: *SDKGenerator, target: config.Config.Target) !void {
         std.debug.print("Generating {s} SDK to {s}\n", .{ @tagName(target.language), target.output_dir });
-        
+
         switch (target.language) {
             .typescript => try self.generateTypeScript(target),
             .rust => try self.generateRust(target),
@@ -32,65 +38,181 @@ pub const SDKGenerator = struct {
         }
     }
 
+    // ── Context building ────────────────────────────────────────────────
+
+    /// Build a template context from the OpenAPI spec.
+    fn buildBaseContext(self: *SDKGenerator) !*template.Context {
+        const ctx = try self.allocator.create(template.Context);
+        ctx.* = template.Context.init(self.allocator);
+        try ctx.putString("spec_title", self.spec.info.title);
+        try ctx.putString("spec_version", self.spec.info.version);
+        try ctx.putString("project_name", self.config.project.name);
+        try ctx.putString("project_version", self.config.project.version);
+        try ctx.putString("default_base_url", "https://api.example.com");
+        return ctx;
+    }
+
+    /// Build operation contexts from the spec's paths.
+    fn buildOperationContexts(self: *SDKGenerator, parent: *const template.Context) ![]const *template.Context {
+        // Count operations
+        var count: usize = 0;
+        var count_iter = self.spec.paths.iterator();
+        while (count_iter.next()) |entry| {
+            const path_item = entry.value_ptr;
+            inline for (.{ "get", "post", "put", "delete", "patch" }) |method| {
+                if (@field(path_item, method)) |op| {
+                    if (op.operationId != null) count += 1;
+                }
+            }
+        }
+
+        const ops = try self.allocator.alloc(*template.Context, count);
+        var idx: usize = 0;
+
+        var path_iter = self.spec.paths.iterator();
+        while (path_iter.next()) |entry| {
+            const path_str = entry.key_ptr.*;
+            const path_item = entry.value_ptr;
+
+            inline for (.{ "get", "post", "put", "delete", "patch" }) |method| {
+                if (@field(path_item, method)) |op| {
+                    if (op.operationId) |op_id| {
+                        const op_ctx = try self.allocator.create(template.Context);
+                        op_ctx.* = template.Context.init(self.allocator);
+                        op_ctx.parent = parent;
+
+                        try op_ctx.putString("operationId", op_id);
+                        try op_ctx.putString("summary", op.summary orelse "");
+                        try op_ctx.putString("path", path_str);
+
+                        // Method (uppercase)
+                        const method_upper = comptime blk: {
+                            var buf: [method.len]u8 = undefined;
+                            for (method, 0..) |c, i| {
+                                buf[i] = std.ascii.toUpper(c);
+                            }
+                            break :blk buf;
+                        };
+                        try op_ctx.putString("method", &method_upper);
+                        try op_ctx.putString("method_lower", method);
+
+                        // Snake case name
+                        var snake_buf: [256]u8 = undefined;
+                        const snake = toSnakeCaseStatic(op_id, &snake_buf);
+                        const snake_owned = try self.allocator.dupe(u8, snake);
+                        try op_ctx.putString("snake_name", snake_owned);
+
+                        // Pascal case name
+                        var pascal_buf: [256]u8 = undefined;
+                        const pascal = toPascalCaseStatic(op_id, &pascal_buf);
+                        const pascal_owned = try self.allocator.dupe(u8, pascal);
+                        try op_ctx.putString("pascal_name", pascal_owned);
+
+                        // Path params
+                        const has_path_params = std.mem.indexOfScalar(u8, path_str, '{') != null;
+                        try op_ctx.putBool("has_path_params", has_path_params);
+
+                        // Format path for Rust format!() macro - replace {name} with {}
+                        if (has_path_params) {
+                            const fmt_path = try self.buildFmtPath(path_str);
+                            try op_ctx.putString("fmt_path", fmt_path);
+                        }
+
+                        // Body
+                        const has_body = std.mem.eql(u8, method, "post") or
+                            std.mem.eql(u8, method, "put") or
+                            std.mem.eql(u8, method, "patch");
+                        try op_ctx.putBool("has_body", has_body);
+
+                        // Function parameters string
+                        const fn_params = try self.buildFnParams(has_path_params, has_body);
+                        try op_ctx.putString("fn_params", fn_params);
+
+                        ops[idx] = op_ctx;
+                        idx += 1;
+                    }
+                }
+            }
+        }
+
+        return @ptrCast(ops[0..idx]);
+    }
+
+    fn buildFmtPath(self: *SDKGenerator, path_str: []const u8) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var in_brace = false;
+        for (path_str) |c| {
+            if (c == '{') {
+                in_brace = true;
+                try buf.append('{');
+            } else if (c == '}') {
+                in_brace = false;
+                try buf.append('}');
+            } else if (!in_brace) {
+                try buf.append(c);
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildFnParams(self: *SDKGenerator, has_path_params: bool, has_body: bool) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        try buf.appendSlice("&self");
+        if (has_path_params) {
+            try buf.appendSlice(", path_param: &str");
+        }
+        if (has_body) {
+            try buf.appendSlice(", body: &impl Serialize");
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    // ── TypeScript generation ───────────────────────────────────────────
+
     fn generateTypeScript(self: *SDKGenerator, target: config.Config.Target) !void {
-        // Create output directory
         std.fs.cwd().makeDir(target.output_dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
 
-        // Create client file path
         const file_path = try std.fmt.allocPrint(self.allocator, "{s}/client.ts", .{target.output_dir});
         defer self.allocator.free(file_path);
 
+        // Build context
+        const ctx = try self.buildBaseContext();
+        try ctx.putString("client_name", "PetStoreClient");
+
+        // Build operations
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+
+        // Build schemas
+        const empty_schemas: []const *template.Context = &.{};
+        try ctx.putList("schemas", empty_schemas);
+
+        // Load and render template
+        const tmpl = try loadTemplate(self.allocator, "templates/typescript/client.ts.template");
+        defer self.allocator.free(tmpl);
+        var engine = template.Engine.init(self.allocator);
+        const content = try engine.render(tmpl, ctx);
+
         const file = try std.fs.cwd().createFile(file_path, .{});
         defer file.close();
-
-        const content = 
-            \\// Generated by Sterling SDK Generator
-            \\// OpenAPI Spec: {s} v{s}
-            \\
-            \\export class PetStoreClient {{
-            \\  private baseUrl: string;
-            \\  private apiKey?: string;
-            \\
-            \\  constructor(config: {{ baseUrl?: string; apiKey?: string }} = {{}}) {{
-            \\    this.baseUrl = config.baseUrl || "https://api.petstore.com/v1";
-            \\    this.apiKey = config.apiKey;
-            \\  }}
-            \\
-            \\  async listPets(): Promise<Pet[]> {{
-            \\    const response = await fetch(`${{this.baseUrl}}/pets`, {{
-            \\      headers: {{
-            \\        ...(this.apiKey && {{ "X-API-Key": this.apiKey }}),
-            \\      }},
-            \\    }});
-            \\    return response.json();
-            \\  }}
-            \\}}
-            \\
-            \\export interface Pet {{
-            \\  id: number;
-            \\  name: string;
-            \\  tag?: string;
-            \\}}
-            \\
-        ;
-
         try file.writeAll(content);
+
         std.debug.print("Generated TypeScript client at {s}\n", .{file_path});
     }
+
+    // ── Rust generation ─────────────────────────────────────────────────
 
     pub fn generateRust(self: *SDKGenerator, target: config.Config.Target) !void {
         const output_dir = target.output_dir;
 
-        // Create directory structure: output_dir/src/
         self.makeDirRecursive(output_dir) catch {};
-        const src_dir = std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir}) catch return error.OutOfMemory;
+        const src_dir = try std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir});
         defer self.allocator.free(src_dir);
         self.makeDirRecursive(src_dir) catch {};
 
-        // Generate all files
         try self.generateCargoToml(output_dir);
         try self.generateRustLib(src_dir);
         try self.generateRustModels(src_dir);
@@ -102,7 +224,6 @@ pub const SDKGenerator = struct {
     fn makeDirRecursive(_: *SDKGenerator, path: []const u8) !void {
         var buf: [4096]u8 = undefined;
         var pos: usize = 0;
-
         var it = std.mem.splitScalar(u8, path, '/');
         while (it.next()) |comp| {
             if (comp.len == 0) continue;
@@ -121,24 +242,27 @@ pub const SDKGenerator = struct {
     }
 
     fn generateCargoToml(self: *SDKGenerator, output_dir: []const u8) !void {
-        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/Cargo.toml", .{output_dir});
-        defer self.allocator.free(file_path);
-
-        const content = try std.fmt.allocPrint(self.allocator,
+        const cargo_template =
             \\[package]
-            \\name = "{s}"
-            \\version = "{s}"
+            \\name = "{{project_name}}"
+            \\version = "{{project_version}}"
             \\edition = "2021"
             \\
             \\[dependencies]
-            \\reqwest = {{ version = "0.11", features = ["json"] }}
-            \\serde = {{ version = "1", features = ["derive"] }}
+            \\reqwest = { version = "0.11", features = ["json"] }
+            \\serde = { version = "1", features = ["derive"] }
             \\serde_json = "1"
-            \\tokio = {{ version = "1", features = ["full"] }}
+            \\tokio = { version = "1", features = ["full"] }
             \\thiserror = "1"
             \\
-        , .{ self.config.project.name, self.config.project.version });
-        defer self.allocator.free(content);
+        ;
+
+        const ctx = try self.buildBaseContext();
+        var engine = template.Engine.init(self.allocator);
+        const content = try engine.render(cargo_template, ctx);
+
+        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/Cargo.toml", .{output_dir});
+        defer self.allocator.free(file_path);
 
         const file = try std.fs.cwd().createFile(file_path, .{});
         defer file.close();
@@ -146,12 +270,9 @@ pub const SDKGenerator = struct {
     }
 
     fn generateRustLib(self: *SDKGenerator, src_dir: []const u8) !void {
-        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/lib.rs", .{src_dir});
-        defer self.allocator.free(file_path);
-
-        const content = try std.fmt.allocPrint(self.allocator,
+        const lib_template =
             \\// Generated by Sterling SDK Generator
-            \\// {s} v{s}
+            \\// {{spec_title}} v{{spec_version}}
             \\
             \\pub mod client;
             \\pub mod models;
@@ -159,8 +280,14 @@ pub const SDKGenerator = struct {
             \\pub use client::Client;
             \\pub use models::*;
             \\
-        , .{ self.spec.info.title, self.spec.info.version });
-        defer self.allocator.free(content);
+        ;
+
+        const ctx = try self.buildBaseContext();
+        var engine = template.Engine.init(self.allocator);
+        const content = try engine.render(lib_template, ctx);
+
+        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/lib.rs", .{src_dir});
+        defer self.allocator.free(file_path);
 
         const file = try std.fs.cwd().createFile(file_path, .{});
         defer file.close();
@@ -168,20 +295,20 @@ pub const SDKGenerator = struct {
     }
 
     fn generateRustModels(self: *SDKGenerator, src_dir: []const u8) !void {
-        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/models.rs", .{src_dir});
-        defer self.allocator.free(file_path);
+        const models_header =
+            \\// Generated by Sterling SDK Generator
+            \\use serde::{Deserialize, Serialize};
+            \\
+            \\
+        ;
 
         var buf = std.array_list.Managed(u8).init(self.allocator);
         defer buf.deinit();
         const writer = buf.writer();
 
-        try writer.writeAll(
-            \\// Generated by Sterling SDK Generator
-            \\use serde::{Deserialize, Serialize};
-            \\
-        );
+        try writer.writeAll(models_header);
 
-        // Generate a struct for each unique response/request schema
+        // Generate model structs from operations
         var path_iter = self.spec.paths.iterator();
         while (path_iter.next()) |entry| {
             const path_item = entry.value_ptr;
@@ -189,28 +316,34 @@ pub const SDKGenerator = struct {
                 if (@field(path_item, method)) |op| {
                     if (op.operationId) |op_id| {
                         var name_buf: [256]u8 = undefined;
-                        const model_name = self.toPascalCase(op_id, &name_buf);
-                        try writer.print(
+                        const model_name = toPascalCaseStatic(op_id, &name_buf);
+
+                        const response_template =
                             \\#[derive(Debug, Clone, Serialize, Deserialize)]
                             \\pub struct {s}Response {{
                             \\}}
                             \\
                             \\
-                        , .{model_name});
+                        ;
+                        try writer.print(response_template, .{model_name});
 
                         if (std.mem.eql(u8, method, "post") or std.mem.eql(u8, method, "put") or std.mem.eql(u8, method, "patch")) {
-                            try writer.print(
+                            const request_template =
                                 \\#[derive(Debug, Clone, Serialize, Deserialize)]
                                 \\pub struct {s}Request {{
                                 \\}}
                                 \\
                                 \\
-                            , .{model_name});
+                            ;
+                            try writer.print(request_template, .{model_name});
                         }
                     }
                 }
             }
         }
+
+        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/models.rs", .{src_dir});
+        defer self.allocator.free(file_path);
 
         const file = try std.fs.cwd().createFile(file_path, .{});
         defer file.close();
@@ -218,204 +351,40 @@ pub const SDKGenerator = struct {
     }
 
     fn generateRustClient(self: *SDKGenerator, src_dir: []const u8) !void {
+        // Build template context
+        const ctx = try self.buildBaseContext();
+
+        // Build operations
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+
+        // Load and render template
+        const tmpl = try loadTemplate(self.allocator, "templates/rust/client.rs.template");
+        defer self.allocator.free(tmpl);
+        var engine = template.Engine.init(self.allocator);
+        const content = try engine.render(tmpl, ctx);
+
         const file_path = try std.fmt.allocPrint(self.allocator, "{s}/client.rs", .{src_dir});
         defer self.allocator.free(file_path);
 
-        var buf = std.array_list.Managed(u8).init(self.allocator);
-        defer buf.deinit();
-        const writer = buf.writer();
-
-        // Write header, imports, error type, config, and client struct
-        try writer.print(
-            \\// Generated by Sterling SDK Generator
-            \\// {s} v{s}
-            \\
-            \\use reqwest::{{self, Client as HttpClient}};
-            \\use serde::{{Deserialize, Serialize}};
-            \\use std::collections::HashMap;
-            \\
-            \\#[derive(Debug, thiserror::Error)]
-            \\pub enum Error {{
-            \\    #[error("HTTP request failed: {{0}}")]
-            \\    Request(#[from] reqwest::Error),
-            \\    #[error("API error {{status}}: {{message}}")]
-            \\    Api {{ status: u16, message: String }},
-            \\}}
-            \\
-            \\pub type Result<T> = std::result::Result<T, Error>;
-            \\
-            \\#[derive(Debug, Clone)]
-            \\pub struct ClientConfig {{
-            \\    pub base_url: String,
-            \\    pub api_key: Option<String>,
-            \\    pub bearer_token: Option<String>,
-            \\    pub timeout: Option<std::time::Duration>,
-            \\}}
-            \\
-        , .{ self.spec.info.title, self.spec.info.version });
-
-        // Default impl
-        try writer.writeAll(
-            \\impl Default for ClientConfig {
-            \\    fn default() -> Self {
-            \\        Self {
-        );
-        try writer.writeAll("            base_url: \"");
-        // Use first server URL if available, else empty
-        try writer.writeAll("https://api.example.com");
-        try writer.writeAll("\".to_string(),\n");
-        try writer.writeAll(
-            \\            api_key: None,
-            \\            bearer_token: None,
-            \\            timeout: Some(std::time::Duration::from_secs(30)),
-            \\        }
-            \\    }
-            \\}
-            \\
-        );
-
-        // Client struct
-        try writer.writeAll(
-            \\#[derive(Debug)]
-            \\pub struct Client {
-            \\    http: HttpClient,
-            \\    config: ClientConfig,
-            \\}
-            \\
-            \\impl Client {
-            \\    pub fn new(config: ClientConfig) -> Result<Self> {
-            \\        let mut builder = HttpClient::builder();
-            \\        if let Some(timeout) = config.timeout {
-            \\            builder = builder.timeout(timeout);
-            \\        }
-            \\        let http = builder.build()?;
-            \\        Ok(Self { http, config })
-            \\    }
-            \\
-            \\    fn build_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-            \\        let url = format!("{}{}", self.config.base_url, path);
-            \\        let mut req = self.http.request(method, &url);
-            \\        if let Some(ref key) = self.config.api_key {
-            \\            req = req.header("X-API-Key", key);
-            \\        }
-            \\        if let Some(ref token) = self.config.bearer_token {
-            \\            req = req.bearer_auth(token);
-            \\        }
-            \\        req
-            \\    }
-            \\
-        );
-
-        // Generate methods for each operation
-        var path_iter = self.spec.paths.iterator();
-        while (path_iter.next()) |entry| {
-            const path_str = entry.key_ptr.*;
-            const path_item = entry.value_ptr;
-
-            inline for (.{ "get", "post", "put", "delete", "patch" }) |method| {
-                if (@field(path_item, method)) |op| {
-                    try self.writeRustMethod(writer, path_str, method, op);
-                }
-            }
-        }
-
-        try writer.writeAll("}\n");
-
         const file = try std.fs.cwd().createFile(file_path, .{});
         defer file.close();
-        try file.writeAll(buf.items);
+        try file.writeAll(content);
     }
 
-    fn writeRustMethod(
-        self: *SDKGenerator,
-        writer: anytype,
-        path_str: []const u8,
-        comptime method: []const u8,
-        op: parser.OpenAPISpec.Operation,
-    ) !void {
-        const op_id = op.operationId orelse return;
-        const summary = op.summary orelse "";
-
-        var snake_buf: [256]u8 = undefined;
-        const fn_name = self.toSnakeCase(op_id, &snake_buf);
-
-        var pascal_buf: [256]u8 = undefined;
-        const type_name = self.toPascalCase(op_id, &pascal_buf);
-
-        // Check if path has parameters like {petId}
-        const has_path_params = std.mem.indexOfScalar(u8, path_str, '{') != null;
-
-        // Determine HTTP method string for reqwest
-        const method_upper = comptime blk: {
-            var buf: [method.len]u8 = undefined;
-            for (method, 0..) |c, i| {
-                buf[i] = std.ascii.toUpper(c);
-            }
-            break :blk buf;
-        };
-
-        // Write doc comment
-        try writer.print("    /// {s}\n", .{summary});
-
-        // Determine if this is a method with request body
-        const has_body = std.mem.eql(u8, method, "post") or std.mem.eql(u8, method, "put") or std.mem.eql(u8, method, "patch");
-
-        // Write function signature
-        if (has_path_params and has_body) {
-            try writer.print("    pub async fn {s}(&self, path_param: &str, body: &impl Serialize) -> Result<{s}Response> {{\n", .{ fn_name, type_name });
-        } else if (has_path_params) {
-            try writer.print("    pub async fn {s}(&self, path_param: &str) -> Result<{s}Response> {{\n", .{ fn_name, type_name });
-        } else if (has_body) {
-            try writer.print("    pub async fn {s}(&self, body: &impl Serialize) -> Result<{s}Response> {{\n", .{ fn_name, type_name });
-        } else {
-            try writer.print("    pub async fn {s}(&self) -> Result<{s}Response> {{\n", .{ fn_name, type_name });
-        }
-
-        // Build path string
-        if (has_path_params) {
-            // Replace {param} with format arg
-            try writer.writeAll("        let path = format!(\"" );
-            // Write path with {} replacing {name}
-            var in_brace = false;
-            for (path_str) |c| {
-                if (c == '{') {
-                    in_brace = true;
-                    try writer.writeAll("{");
-                } else if (c == '}') {
-                    in_brace = false;
-                    try writer.writeAll("}");
-                } else if (!in_brace) {
-                    try writer.writeByte(c);
-                }
-            }
-            try writer.writeAll("\", path_param);\n");
-            try writer.print("        let req = self.build_request(reqwest::Method::{s}, &path);\n", .{method_upper});
-        } else {
-            try writer.print("        let req = self.build_request(reqwest::Method::{s}, \"{s}\");\n", .{ method_upper, path_str });
-        }
-
-        // Add body if needed
-        if (has_body) {
-            try writer.writeAll("        let req = req.json(body);\n");
-        }
-
-        // Send request and handle response
-        try writer.writeAll(
-            \\        let response = req.send().await?;
-            \\        if !response.status().is_success() {
-            \\            let status = response.status().as_u16();
-            \\            let message = response.text().await.unwrap_or_default();
-            \\            return Err(Error::Api { status, message });
-            \\        }
-            \\        let result = response.json().await?;
-            \\        Ok(result)
-            \\    }
-            \\
-        );
-    }
+    // ── Case conversion utilities ───────────────────────────────────────
 
     pub fn toSnakeCase(self: *SDKGenerator, input: []const u8, buf: *[256]u8) []const u8 {
         _ = self;
+        return toSnakeCaseStatic(input, buf);
+    }
+
+    pub fn toPascalCase(self: *SDKGenerator, input: []const u8, buf: *[256]u8) []const u8 {
+        _ = self;
+        return toPascalCaseStatic(input, buf);
+    }
+
+    fn toSnakeCaseStatic(input: []const u8, buf: *[256]u8) []const u8 {
         var pos: usize = 0;
         for (input, 0..) |c, i| {
             if (std.ascii.isUpper(c)) {
@@ -437,8 +406,7 @@ pub const SDKGenerator = struct {
         return buf[0..pos];
     }
 
-    pub fn toPascalCase(self: *SDKGenerator, input: []const u8, buf: *[256]u8) []const u8 {
-        _ = self;
+    fn toPascalCaseStatic(input: []const u8, buf: *[256]u8) []const u8 {
         var pos: usize = 0;
         var capitalize_next = true;
         for (input) |c| {
@@ -454,6 +422,8 @@ pub const SDKGenerator = struct {
         }
         return buf[0..pos];
     }
+
+    // ── Stub generators ─────────────────────────────────────────────────
 
     fn generatePython(self: *SDKGenerator, target: config.Config.Target) !void {
         _ = self;

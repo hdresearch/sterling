@@ -28,7 +28,7 @@ export class {{client_name}} {
     } = {}
   ): Promise<T> {
     const url = new URL(path, this.baseUrl);
-    
+
     if (options.params) {
       Object.entries(options.params).forEach(([key, value]) => {
         if (value !== undefined) {
@@ -63,19 +63,15 @@ export class {{client_name}} {
 {{#each operations}}
   /**
    * {{summary}}
-   * {{description}}
    */
-  async {{operationId}}({{#if parameters}}params: {
-    {{#each parameters}}
-    {{name}}{{#unless required}}?{{/unless}}: {{type}};
-    {{/each}}
-  }{{/if}}{{#if requestBody}}{{#if parameters}}, {{/if}}body: {{requestBodyType}}{{/if}}): Promise<{{responseType}}> {
-    return this.request<{{responseType}}>(
+  async {{operationId}}({{#if has_body}}body?: any{{/if}}): Promise<any> {
+    return this.request<any>(
       '{{method}}',
-      '{{path}}'{{#if pathParams}}.replace({{#each pathParams}}'{{placeholder}}', String(params.{{name}})){{/each}}{{/if}},
+      '{{path}}',
       {
-        {{#if queryParams}}params: { {{#each queryParams}}{{name}}: params.{{name}}, {{/each}} },{{/if}}
-        {{#if requestBody}}body,{{/if}}
+{{#if has_body}}
+        body,
+{{/if}}
       }
     );
   }
@@ -85,9 +81,9 @@ export class {{client_name}} {
 
 {{#each schemas}}
 export interface {{name}} {
-  {{#each properties}}
+{{#each properties}}
   {{name}}{{#unless required}}?{{/unless}}: {{type}};
-  {{/each}}
+{{/each}}
 }
 
 {{/each}}
