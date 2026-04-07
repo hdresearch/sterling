@@ -2,11 +2,11 @@
 # {{spec_title}} v{{spec_version}}
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 {{#each operations}}
 @dataclass
 class {{pascal_name}}Response:
-    data: Dict[str, Any]
+    data: Optional[Any] = None
 
 {{/each}}

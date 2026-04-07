@@ -537,6 +537,11 @@ pub const SDKGenerator = struct {
         defer self.allocator.free(gomod_path);
         try self.renderTemplate("templates/go/go.mod.template", gomod_path, ctx);
         
+        // Generate README.md
+        const readme_path = try std.fmt.allocPrint(self.allocator, "{s}/README.md", .{output_dir});
+        defer self.allocator.free(readme_path);
+        try self.renderTemplate("templates/go/README.md.template", readme_path, ctx);
+        
         std.debug.print("Generated Go SDK at {s}\n", .{output_dir});
     }
 

@@ -1,1 +1,10 @@
-{ "name": "{{package_name}}", "version": "{{project_version}}" }
+{
+  "name": "{{package_name}}",
+  "version": "{{project_version}}",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  }
+}

@@ -2,24 +2,17 @@
 # {{spec_title}} v{{spec_version}}
 
 import requests
-from typing import Any, Dict, Optional
 
-
-class Client:
-    """{{spec_title}} API Client"""
-
-    def __init__(self, base_url: str = "{{base_url}}", api_key: Optional[str] = None):
-        self.base_url = base_url.rstrip("/")
+class {{class_name}}Client:
+    def __init__(self, base_url: str = "{{base_url}}"):
+        self.base_url = base_url
         self.session = requests.Session()
-        if api_key:
-            self.session.headers["X-API-Key"] = api_key
 
 {{#each operations}}
-    def {{snake_name}}(self{{#if has_body}}, body: Dict[str, Any] = None{{/if}}) -> Dict[str, Any]:
+    def {{snake_name}}(self):
         """{{summary}}"""
-        url = f"{self.base_url}{{path}}"
-        resp = self.session.{{method_lower}}(url{{#if has_body}}, json=body{{/if}})
-        resp.raise_for_status()
-        return resp.json()
+        response = self.session.request("{{method}}", f"{self.base_url}{{path}}")
+        response.raise_for_status()
+        return response.json()
 
 {{/each}}

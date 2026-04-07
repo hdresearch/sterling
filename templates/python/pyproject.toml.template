@@ -1,10 +1,5 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
-
 [project]
 name = "{{package_name}}"
 version = "{{project_version}}"
-description = "Python SDK for {{spec_title}}"
 requires-python = ">=3.8"
 dependencies = ["requests>=2.28"]
