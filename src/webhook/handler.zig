@@ -262,17 +262,21 @@ pub const WebhookHandler = struct {
         if (!std.mem.startsWith(u8, signature_header, prefix)) return false;
         const hex_sig = signature_header[prefix.len..];
 
-        var mac = std.crypto.auth.hmac.sha2.HmacSha256.init(secret.*);
+        var mac = std.crypto.auth.hmac.sha2.HmacSha256.init(secret);
         mac.update(payload);
         var computed: [32]u8 = undefined;
         mac.final(&computed);
 
         // Compare hex
-        var expected_hex: [64]u8 = undefined;
-        _ = std.fmt.bufPrint(&expected_hex, "{}", .{std.fmt.fmtSliceHexLower(&computed)}) catch return false;
+        const expected_hex = std.fmt.bytesToHex(&computed, .lower);
 
         if (hex_sig.len != 64) return false;
-        return std.crypto.utils.timingSafeEql([64]u8, expected_hex, hex_sig[0..64].*);
+        // Constant-time comparison
+        var diff: u8 = 0;
+        for (expected_hex, 0..) |byte, i| {
+            diff |= byte ^ hex_sig[i];
+        }
+        return diff == 0;
     }
 };
 
@@ -502,6 +506,45 @@ test "parsePayload ping event" {
     }
 
     try std.testing.expectEqual(WebhookEvent.EventType.ping, event.event_type);
+}
+
+test "validateSignature with valid signature" {
+    const secret = "test-webhook-secret";
+    var handler = WebhookHandler.initWithConfig(std.testing.allocator, .{
+        .secret = secret,
+    });
+    const payload = "test payload body";
+
+    // Compute expected signature
+    var mac = std.crypto.auth.hmac.sha2.HmacSha256.init(secret);
+    mac.update(payload);
+    var computed: [32]u8 = undefined;
+    mac.final(&computed);
+    const hex_buf = std.fmt.bytesToHex(&computed, .lower);
+
+    var sig_buf: [71]u8 = undefined;
+    _ = std.fmt.bufPrint(&sig_buf, "sha256={s}", .{hex_buf}) catch unreachable;
+
+    try std.testing.expect(handler.validateSignature(payload, &sig_buf));
+}
+
+test "validateSignature rejects invalid signature" {
+    var handler = WebhookHandler.initWithConfig(std.testing.allocator, .{
+        .secret = "test-secret",
+    });
+    try std.testing.expect(!handler.validateSignature("payload", "sha256=0000000000000000000000000000000000000000000000000000000000000000"));
+}
+
+test "validateSignature skips when no secret configured" {
+    var handler = WebhookHandler.init(std.testing.allocator);
+    try std.testing.expect(handler.validateSignature("any payload", "anything"));
+}
+
+test "validateSignature rejects bad prefix" {
+    var handler = WebhookHandler.initWithConfig(std.testing.allocator, .{
+        .secret = "secret",
+    });
+    try std.testing.expect(!handler.validateSignature("payload", "md5=abc"));
 }
 
 test "parsePayload multiple commits with multiple files" {

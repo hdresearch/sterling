@@ -158,6 +158,66 @@ test "PipelineResult format output" {
     try testing.expect(std.mem.indexOf(u8, formatted, "rust") != null);
 }
 
+test "Execute pipeline with empty spec file" {
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+    try tmp_dir.dir.writeFile(.{ .sub_path = "empty.yaml", .data = "" });
+
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const spec_path = try tmp_dir.dir.realpath("empty.yaml", &path_buf);
+
+    var orch = pipeline.PipelineOrchestrator.initWithConfig(testing.allocator, .{
+        .languages = &.{"rust"},
+        .enable_validation = true,
+        .enable_docs = false,
+        .enable_github_push = false,
+    });
+
+    const result = try orch.executePipeline(spec_path);
+    defer {
+        testing.allocator.free(result.steps);
+        testing.allocator.free(result.languages_generated);
+    }
+
+    // Validation passes (file exists) but parse fails (empty file)
+    try testing.expect(!result.success);
+    try testing.expectEqual(@as(usize, 2), result.steps.len);
+    try testing.expectEqual(pipeline.StepStatus.completed, result.steps[0].status);
+    try testing.expectEqual(pipeline.StepStatus.failed, result.steps[1].status);
+}
+
+test "Execute pipeline with all languages" {
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+    try tmp_dir.dir.writeFile(.{ .sub_path = "api.yaml", .data = "openapi: 3.0.0\ninfo:\n  title: Test\n  version: 1.0" });
+
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const spec_path = try tmp_dir.dir.realpath("api.yaml", &path_buf);
+
+    var orch = pipeline.PipelineOrchestrator.initWithConfig(testing.allocator, .{
+        .languages = &.{ "typescript", "rust", "python", "go" },
+        .enable_validation = true,
+        .enable_docs = true,
+        .enable_github_push = false,
+    });
+
+    const result = try orch.executePipeline(spec_path);
+    defer {
+        for (result.steps) |step| {
+            if (std.mem.startsWith(u8, step.name, "generate-")) {
+                testing.allocator.free(step.name);
+            }
+        }
+        testing.allocator.free(result.steps);
+        testing.allocator.free(result.languages_generated);
+    }
+
+    try testing.expect(result.success);
+    // validate + parse + 4 languages + docs = 7
+    try testing.expectEqual(@as(usize, 7), result.steps.len);
+    try testing.expectEqual(@as(usize, 4), result.languages_generated.len);
+}
+
 test "PipelineResult format failure output" {
     const steps = [_]pipeline.PipelineStep{
         .{ .name = "validate-spec", .status = .failed, .error_message = "File not found", .duration_ms = 1 },
