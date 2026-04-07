@@ -1,6 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
-const github = @import("../../src/github/automation.zig");
+const github = @import("github");
 
 test "GitHub config initialization" {
     const config = github.GitHubConfig{
