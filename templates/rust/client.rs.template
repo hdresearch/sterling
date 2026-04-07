@@ -2,26 +2,31 @@
 // {{spec_title}} v{{spec_version}}
 
 use reqwest::Client as HttpClient;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use crate::models::*;
 
 pub struct Client {
+    http: HttpClient,
     base_url: String,
-    http_client: HttpClient,
 }
 
 impl Client {
     pub fn new(base_url: &str) -> Self {
         Self {
+            http: HttpClient::new(),
             base_url: base_url.to_string(),
-            http_client: HttpClient::new(),
         }
     }
 
 {{#each operations}}
     /// {{summary}}
-    pub async fn {{snake_name}}({{fn_params}}) -> Result<serde_json::Value, reqwest::Error> {
+    pub async fn {{snake_name}}({{fn_params}}) -> Result<{{pascal_name}}Response, reqwest::Error> {
         let url = format!("{}{}", self.base_url, "{{path}}");
-        let resp = self.http_client.{{method_lower}}(&url)
+        let resp = self.http
+            .{{method_lower}}(&url)
+{{#if has_body}}
+            .json(body)
+{{/if}}
             .send()
             .await?
             .json()

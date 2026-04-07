@@ -4,9 +4,9 @@
 from dataclasses import dataclass
 from typing import Any, Optional
 
-{{#each operations}}
+{{#each models}}
 @dataclass
-class {{pascal_name}}Response:
-    data: Optional[Any] = None
+class {{pascal_name}}:
+    data: dict[str, Any] | None = None
 
 {{/each}}

@@ -9,11 +9,18 @@ export class {{class_name}}Client {
   }
 
 {{#each operations}}
-  async {{operationId}}(): Promise<any> {
-    const response = await fetch(`${this.baseUrl}{{path}}`, {
+  /**
+   * {{summary}}
+   */
+  async {{operationId}}({{#if has_body}}body: Record<string, unknown>{{/if}}): Promise<Response> {
+    const url = `${this.baseUrl}{{path}}`;
+    return fetch(url, {
       method: "{{method}}",
+{{#if has_body}}
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+{{/if}}
     });
-    return response.json();
   }
 
 {{/each}}

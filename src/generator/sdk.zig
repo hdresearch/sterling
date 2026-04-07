@@ -245,24 +245,11 @@ pub const SDKGenerator = struct {
         std.debug.print("Generated Rust SDK at {s}\n", .{output_dir});
     }
 
-    fn makeDirRecursive(_: *SDKGenerator, path: []const u8) !void {
-        var buf: [4096]u8 = undefined;
-        var pos: usize = 0;
-        var it = std.mem.splitScalar(u8, path, '/');
-        while (it.next()) |comp| {
-            if (comp.len == 0) continue;
-            if (std.mem.eql(u8, comp, ".")) continue;
-            if (pos > 0) {
-                buf[pos] = '/';
-                pos += 1;
-            }
-            @memcpy(buf[pos .. pos + comp.len], comp);
-            pos += comp.len;
-            std.fs.cwd().makeDir(buf[0..pos]) catch |err| switch (err) {
-                error.PathAlreadyExists => {},
-                else => return err,
-            };
-        }
+    pub fn makeDirRecursive(_: *SDKGenerator, path: []const u8) !void {
+        std.fs.cwd().makePath(path) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
     }
 
     fn generateCargoToml(self: *SDKGenerator, output_dir: []const u8) !void {
@@ -580,7 +567,7 @@ pub const SDKGenerator = struct {
         std.debug.print("Generated Zig SDK at {s}\n", .{output_dir});
     }
 
-    fn renderTemplate(self: *SDKGenerator, template_path: []const u8, output_path: []const u8, ctx: *template.Context) !void {
+    pub fn renderTemplate(self: *SDKGenerator, template_path: []const u8, output_path: []const u8, ctx: *template.Context) !void {
         const tmpl = try loadTemplate(self.allocator, template_path);
         defer self.allocator.free(tmpl);
         
