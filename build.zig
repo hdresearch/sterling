@@ -218,6 +218,40 @@ pub fn build(b: *std.Build) void {
     });
     const run_rust_tests = b.addRunArtifact(rust_tests);
 
+    // Webhook tests (tests/webhook/webhook_test.zig)
+    const webhook_mod = b.createModule(.{
+        .root_source_file = b.path("src/webhook/handler.zig"),
+        .target = target,
+    });
+    const webhook_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/webhook/webhook_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "webhook", .module = webhook_mod },
+            },
+        }),
+    });
+    const run_webhook_tests = b.addRunArtifact(webhook_tests);
+
+    // Pipeline tests (tests/pipeline/pipeline_test.zig)
+    const pipeline_mod = b.createModule(.{
+        .root_source_file = b.path("src/pipeline/orchestrator.zig"),
+        .target = target,
+    });
+    const pipeline_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/pipeline/pipeline_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "pipeline", .module = pipeline_mod },
+            },
+        }),
+    });
+    const run_pipeline_tests = b.addRunArtifact(pipeline_tests);
+
     // A top level step for running all tests. dependOn can be called multiple
     // times and since the two run steps do not depend on one another, this will
     // make the two of them run in parallel.
@@ -228,6 +262,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_config_tests.step);
     test_step.dependOn(&run_sdk_tests.step);
     test_step.dependOn(&run_rust_tests.step);
+    test_step.dependOn(&run_webhook_tests.step);
+    test_step.dependOn(&run_pipeline_tests.step);
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //
