@@ -57,28 +57,35 @@ pub fn build(b: *std.Build) void {
     //
     // If neither case applies to you, feel free to delete the declaration you
     // don't need and to put everything under a single module.
+    // Named modules that sdk.zig depends on
+    const openapi_mod_exe = b.createModule(.{
+        .root_source_file = b.path("src/parser/openapi.zig"),
+        .target = target,
+    });
+    const config_mod_exe = b.createModule(.{
+        .root_source_file = b.path("src/config/config.zig"),
+        .target = target,
+    });
+    const sdk_gen_mod_exe = b.createModule(.{
+        .root_source_file = b.path("src/generator/sdk.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "openapi", .module = openapi_mod_exe },
+            .{ .name = "config", .module = config_mod_exe },
+        },
+    });
+
     const exe = b.addExecutable(.{
         .name = "sterling",
         .root_module = b.createModule(.{
-            // b.createModule defines a new module just like b.addModule but,
-            // unlike b.addModule, it does not expose the module to consumers of
-            // this package, which is why in this case we don't have to give it a name.
             .root_source_file = b.path("src/main.zig"),
-            // Target and optimization levels must be explicitly wired in when
-            // defining an executable or library (in the root module), and you
-            // can also hardcode a specific target for an executable or library
-            // definition if desireable (e.g. firmware for embedded devices).
             .target = target,
             .optimize = optimize,
-            // List of modules available for import in source files part of the
-            // root module.
             .imports = &.{
-                // Here "sterling" is the name you will use in your source code to
-                // import this module (e.g. `@import("sterling")`). The name is
-                // repeated because you are allowed to rename your imports, which
-                // can be extremely useful in case of collisions (which can happen
-                // importing modules from different packages).
                 .{ .name = "sterling", .module = mod },
+                .{ .name = "openapi", .module = openapi_mod_exe },
+                .{ .name = "config", .module = config_mod_exe },
+                .{ .name = "sdk_gen", .module = sdk_gen_mod_exe },
             },
         }),
     });
@@ -167,6 +174,50 @@ pub fn build(b: *std.Build) void {
     });
     const run_config_tests = b.addRunArtifact(config_tests);
 
+    // Shared modules for SDK/Rust tests
+    const openapi_mod_for_sdk = b.createModule(.{
+        .root_source_file = b.path("src/parser/openapi.zig"),
+        .target = target,
+    });
+    const config_mod_for_sdk = b.createModule(.{
+        .root_source_file = b.path("src/config/config.zig"),
+        .target = target,
+    });
+    const sdk_mod_for_tests = b.createModule(.{
+        .root_source_file = b.path("src/generator/sdk.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "openapi", .module = openapi_mod_for_sdk },
+            .{ .name = "config", .module = config_mod_for_sdk },
+        },
+    });
+
+    // SDK generator tests (tests/generator/sdk_test.zig)
+    const sdk_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/generator/sdk_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "sdk", .module = sdk_mod_for_tests },
+            },
+        }),
+    });
+    const run_sdk_tests = b.addRunArtifact(sdk_tests);
+
+    // Rust generator tests (tests/generator/rust_test.zig)
+    const rust_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/generator/rust_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "sdk", .module = sdk_mod_for_tests },
+            },
+        }),
+    });
+    const run_rust_tests = b.addRunArtifact(rust_tests);
+
     // A top level step for running all tests. dependOn can be called multiple
     // times and since the two run steps do not depend on one another, this will
     // make the two of them run in parallel.
@@ -175,6 +226,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_exe_tests.step);
     test_step.dependOn(&run_parser_tests.step);
     test_step.dependOn(&run_config_tests.step);
+    test_step.dependOn(&run_sdk_tests.step);
+    test_step.dependOn(&run_rust_tests.step);
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //

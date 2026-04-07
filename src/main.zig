@@ -1,7 +1,7 @@
 const std = @import("std");
-const parser = @import("parser/openapi.zig");
-const config = @import("config/config.zig");
-const generator = @import("generator/sdk.zig");
+const parser = @import("openapi");
+const config = @import("config");
+const sdk_gen = @import("sdk_gen");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -95,7 +95,7 @@ fn handleGenerate(raw_allocator: std.mem.Allocator, args: [][:0]u8) !void {
     };
 
     // Generate SDKs
-    var sdk_generator = generator.SDKGenerator.init(allocator, spec, cfg);
+    var sdk_generator = sdk_gen.SDKGenerator.init(allocator, spec, cfg);
     sdk_generator.generateAll() catch |err| {
         std.debug.print("Error generating SDKs: {}\n", .{err});
         return;
