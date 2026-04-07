@@ -5,6 +5,20 @@ pub const OpenAPISpec = struct {
     info: Info,
     paths: std.StringHashMap(PathItem),
 
+    /// Free all hash-map memory owned by this spec.
+    pub fn deinit(self: *OpenAPISpec) void {
+        var pit = self.paths.iterator();
+        while (pit.next()) |entry| {
+            var path_item = entry.value_ptr;
+            inline for (.{ "get", "post", "put", "delete", "patch" }) |method| {
+                if (@field(path_item, method)) |*op| {
+                    op.responses.deinit();
+                }
+            }
+        }
+        self.paths.deinit();
+    }
+
     pub const Info = struct {
         title: []const u8,
         version: []const u8,
@@ -298,10 +312,17 @@ fn parseJson(allocator: std.mem.Allocator, content: []const u8) JsonParseError!*
 // ── Public API ──────────────────────────────────────────────────────────
 
 pub fn parseOpenAPISpec(allocator: std.mem.Allocator, content: []const u8) ParseError!OpenAPISpec {
+    // Use an internal arena for the temporary YAML/JSON parse tree.
+    // All string data in the resulting OpenAPISpec are slices into `content`,
+    // so it is safe to free the tree after building the spec.
+    var tree_arena = std.heap.ArenaAllocator.init(allocator);
+    defer tree_arena.deinit();
+    const tree_alloc = tree_arena.allocator();
+
     const root = if (isJsonContent(content))
-        parseJson(allocator, content) catch return ParseError.InvalidJson
+        parseJson(tree_alloc, content) catch return ParseError.InvalidJson
     else
-        parseYaml(allocator, content) catch return ParseError.InvalidYaml;
+        parseYaml(tree_alloc, content) catch return ParseError.InvalidYaml;
 
     const openapi_version = root.getChildScalar("openapi") orelse
         return ParseError.MissingOpenAPIVersion;
