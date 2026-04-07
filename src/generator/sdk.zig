@@ -453,44 +453,52 @@ pub const SDKGenerator = struct {
 
     fn generatePython(self: *SDKGenerator, target: config.Config.Target) !void {
         const output_dir = target.output_dir;
-        
-        // Create directory structure
+
+        // Create directory structure: output_dir/src/
         self.makeDirRecursive(output_dir) catch {};
-        
+        const src_dir = try std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir});
+        defer self.allocator.free(src_dir);
+        self.makeDirRecursive(src_dir) catch {};
+
         // Build context
         const ctx = try self.buildBaseContext();
         try ctx.putString("class_name", "PetStore");
         try ctx.putString("package_name", "petstore_sdk");
         try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-        
+
         // Build operations
         const ops = try self.buildOperationContexts(ctx);
         try ctx.putList("operations", ops);
-        
+
         // Build models
         const models = try self.buildModelContexts(ctx);
         try ctx.putList("models", models);
-        
-        // Generate client.py
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/client.py", .{output_dir});
+
+        // Generate src/client.py
+        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/src/client.py", .{output_dir});
         defer self.allocator.free(client_path);
         try self.renderTemplate("templates/python/client.py.template", client_path, ctx);
-        
-        // Generate models.py
-        const models_path = try std.fmt.allocPrint(self.allocator, "{s}/models.py", .{output_dir});
+
+        // Generate src/models.py
+        const models_path = try std.fmt.allocPrint(self.allocator, "{s}/src/models.py", .{output_dir});
         defer self.allocator.free(models_path);
         try self.renderTemplate("templates/python/models.py.template", models_path, ctx);
-        
-        // Generate __init__.py
-        const init_path = try std.fmt.allocPrint(self.allocator, "{s}/__init__.py", .{output_dir});
+
+        // Generate src/__init__.py
+        const init_path = try std.fmt.allocPrint(self.allocator, "{s}/src/__init__.py", .{output_dir});
         defer self.allocator.free(init_path);
         try self.renderTemplate("templates/python/__init__.py.template", init_path, ctx);
-        
+
         // Generate pyproject.toml
         const pyproject_path = try std.fmt.allocPrint(self.allocator, "{s}/pyproject.toml", .{output_dir});
         defer self.allocator.free(pyproject_path);
         try self.renderTemplate("templates/python/pyproject.toml.template", pyproject_path, ctx);
-        
+
+        // Generate README.md
+        const readme_path = try std.fmt.allocPrint(self.allocator, "{s}/README.md", .{output_dir});
+        defer self.allocator.free(readme_path);
+        try self.renderTemplate("templates/python/README.md.template", readme_path, ctx);
+
         std.debug.print("Generated Python SDK at {s}\n", .{output_dir});
     }
     fn generateGo(self: *SDKGenerator, target: config.Config.Target) !void {
