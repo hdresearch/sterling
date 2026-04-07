@@ -318,24 +318,26 @@ pub const SDKGenerator = struct {
                         var name_buf: [256]u8 = undefined;
                         const model_name = toPascalCaseStatic(op_id, &name_buf);
 
-                        const response_template =
+                        try writer.print(
                             \\#[derive(Debug, Clone, Serialize, Deserialize)]
                             \\pub struct {s}Response {{
+                            \\    #[serde(flatten)]
+                            \\    pub data: serde_json::Value,
                             \\}}
                             \\
                             \\
-                        ;
-                        try writer.print(response_template, .{model_name});
+                        , .{model_name});
 
                         if (std.mem.eql(u8, method, "post") or std.mem.eql(u8, method, "put") or std.mem.eql(u8, method, "patch")) {
-                            const request_template =
+                            try writer.print(
                                 \\#[derive(Debug, Clone, Serialize, Deserialize)]
                                 \\pub struct {s}Request {{
+                                \\    #[serde(flatten)]
+                                \\    pub data: serde_json::Value,
                                 \\}}
                                 \\
                                 \\
-                            ;
-                            try writer.print(request_template, .{model_name});
+                            , .{model_name});
                         }
                     }
                 }

@@ -3,7 +3,7 @@
 
 use reqwest::{self, Client as HttpClient};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use super::models::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -41,6 +41,7 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a new API client with the given configuration.
     pub fn new(config: ClientConfig) -> Result<Self> {
         let mut builder = HttpClient::builder();
         if let Some(timeout) = config.timeout {
@@ -48,6 +49,21 @@ impl Client {
         }
         let http = builder.build()?;
         Ok(Self { http, config })
+    }
+
+    /// Create a new API client with default configuration.
+    pub fn from_env() -> Result<Self> {
+        let mut config = ClientConfig::default();
+        if let Ok(key) = std::env::var("API_KEY") {
+            config.api_key = Some(key);
+        }
+        if let Ok(token) = std::env::var("BEARER_TOKEN") {
+            config.bearer_token = Some(token);
+        }
+        if let Ok(url) = std::env::var("API_BASE_URL") {
+            config.base_url = url;
+        }
+        Self::new(config)
     }
 
     fn build_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {

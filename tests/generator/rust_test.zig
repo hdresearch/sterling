@@ -151,10 +151,12 @@ test "rust client.rs has async reqwest client" {
     // Check imports and structure
     try testing.expect(std.mem.indexOf(u8, content, "use reqwest") != null);
     try testing.expect(std.mem.indexOf(u8, content, "use serde") != null);
+    try testing.expect(std.mem.indexOf(u8, content, "use super::models::*") != null);
     try testing.expect(std.mem.indexOf(u8, content, "pub struct ClientConfig") != null);
     try testing.expect(std.mem.indexOf(u8, content, "pub struct Client") != null);
     try testing.expect(std.mem.indexOf(u8, content, "impl Client") != null);
     try testing.expect(std.mem.indexOf(u8, content, "pub fn new") != null);
+    try testing.expect(std.mem.indexOf(u8, content, "pub fn from_env") != null);
 
     // Check authentication support
     try testing.expect(std.mem.indexOf(u8, content, "api_key") != null);
@@ -222,6 +224,9 @@ test "rust models.rs has serde structs" {
     try testing.expect(std.mem.indexOf(u8, content, "Response") != null);
     // POST operations should also have Request models
     try testing.expect(std.mem.indexOf(u8, content, "Request") != null);
+    // Check serde flatten for flexible data
+    try testing.expect(std.mem.indexOf(u8, content, "#[serde(flatten)]") != null);
+    try testing.expect(std.mem.indexOf(u8, content, "serde_json::Value") != null);
 }
 
 test "rust snake_case conversion" {
