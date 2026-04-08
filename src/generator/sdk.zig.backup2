@@ -35,7 +35,6 @@ pub const SDKGenerator = struct {
             .rust => try self.generateRust(target),
             .python => try self.generatePython(target),
             .go => try self.generateGo(target),
-            .zig => try self.generateZig(target),
         }
     }
 
@@ -518,41 +517,6 @@ pub const SDKGenerator = struct {
         try self.renderTemplate("templates/go/go.mod.template", gomod_path, ctx);
         
         std.debug.print("Generated Go SDK at {s}\n", .{output_dir});
-    }
-
-    fn generateZig(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
-
-        // Create directory structure
-        self.makeDirRecursive(output_dir) catch {};
-        const src_dir = try std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir});
-        defer self.allocator.free(src_dir);
-        self.makeDirRecursive(src_dir) catch {};
-
-        // Build context
-        const ctx = try self.buildBaseContext();
-        try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-
-        // Build operations
-        const ops = try self.buildOperationContexts(ctx);
-        try ctx.putList("operations", ops);
-
-        // Generate client.zig
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/src/client.zig", .{output_dir});
-        defer self.allocator.free(client_path);
-        try self.renderTemplate("templates/zig/client.zig.template", client_path, ctx);
-
-        // Generate build.zig
-        const build_path = try std.fmt.allocPrint(self.allocator, "{s}/build.zig", .{output_dir});
-        defer self.allocator.free(build_path);
-        try self.renderTemplate("templates/zig/build.zig.template", build_path, ctx);
-
-        // Generate README.md
-        const readme_path = try std.fmt.allocPrint(self.allocator, "{s}/README.md", .{output_dir});
-        defer self.allocator.free(readme_path);
-        try self.renderTemplate("templates/zig/README.md.template", readme_path, ctx);
-
-        std.debug.print("Generated Zig SDK at {s}\n", .{output_dir});
     }
 
     fn renderTemplate(self: *SDKGenerator, template_path: []const u8, output_path: []const u8, ctx: *template.Context) !void {

@@ -98,10 +98,11 @@ graph TB
         J[Rust Generator<br/>• reqwest HTTP<br/>• serde models<br/>• async/await]
         K[Python Generator<br/>• httpx/requests<br/>• Pydantic models<br/>• async support]
         L[Go Generator<br/>• net/http<br/>• struct types<br/>• context support]
+        M[Zig Generator<br/>• std.http<br/>• JSON types<br/>• comptime safety]
     end
     
     subgraph "AI Enhancement"
-        M[LLM Integration]
+        N[LLM Integration]
         N[Code Review]
         O[Error Handling]
         P[Documentation Polish]

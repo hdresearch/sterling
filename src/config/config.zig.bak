@@ -22,7 +22,6 @@ pub const Config = struct {
             rust,
             python,
             go,
-            zig,
         };
     };
 
@@ -57,19 +56,23 @@ pub fn parseConfig(allocator: std.mem.Allocator, content: []const u8) ConfigErro
     var parser = toml.TomlParser.init(allocator);
     const result = try parser.parse(content);
 
+    // Parse [project] section
     const project_section = result.getSection("project") orelse return error.MissingProjectSection;
     const project = Config.Project{
         .name = project_section.getString("name") orelse return error.MissingProjectName,
         .version = project_section.getString("version") orelse return error.MissingProjectVersion,
     };
 
+    // Collect targets
     var target_count: usize = 0;
 
+    // Count [[targets]] array entries
     const array_targets = result.getArraySection("targets");
     if (array_targets) |at| {
         target_count += at.len;
     }
 
+    // Count [targets.X] named sections
     var sections_iter = result.sections.iterator();
     while (sections_iter.next()) |entry| {
         if (std.mem.startsWith(u8, entry.key_ptr.*, "targets.")) {
@@ -82,6 +85,7 @@ pub fn parseConfig(allocator: std.mem.Allocator, content: []const u8) ConfigErro
     const targets = allocator.alloc(Config.Target, target_count) catch return error.OutOfMemory;
     var idx: usize = 0;
 
+    // Add [[targets]] entries
     if (array_targets) |at| {
         for (at) |table| {
             const lang_str = table.getString("language") orelse return error.MissingLanguage;
@@ -98,6 +102,7 @@ pub fn parseConfig(allocator: std.mem.Allocator, content: []const u8) ConfigErro
         }
     }
 
+    // Add [targets.X] entries
     sections_iter = result.sections.iterator();
     while (sections_iter.next()) |entry| {
         if (std.mem.startsWith(u8, entry.key_ptr.*, "targets.")) {
@@ -116,6 +121,7 @@ pub fn parseConfig(allocator: std.mem.Allocator, content: []const u8) ConfigErro
         }
     }
 
+    // Parse optional [llm] section
     var llm_config: ?Config.LLMConfig = null;
     if (result.getSection("llm")) |llm_section| {
         const provider_str = llm_section.getString("provider");
@@ -150,7 +156,6 @@ fn parseLanguage(lang: []const u8) ?Config.Target.Language {
     if (std.mem.eql(u8, lang, "rust")) return .rust;
     if (std.mem.eql(u8, lang, "python")) return .python;
     if (std.mem.eql(u8, lang, "go")) return .go;
-    if (std.mem.eql(u8, lang, "zig")) return .zig;
     return null;
 }
 

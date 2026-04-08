@@ -1,0 +1,65 @@
+# {{project_name}} Zig SDK
+
+Generated Zig SDK for {{project_name}} API.
+
+## Installation
+
+Add this SDK to your Zig project by including it as a dependency in your `build.zig`:
+
+```zig
+const sdk = b.dependency("{{kebabCase project.name}}-sdk", .{
+    .target = target,
+    .optimize = optimize,
+});
+exe.root_module.addImport("{{kebabCase project.name}}", sdk.module("{{kebabCase project.name}}-sdk"));
+```
+
+## Usage
+
+```zig
+const std = @import("std");
+const Client = @import("{{kebabCase project.name}}").Client;
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var client = Client.init(allocator, "https://api.example.com");
+    defer client.deinit();
+
+    // Example API call
+    const response = try client.someOperation();
+    std.debug.print("Response: {}\n", .{response.data});
+}
+```
+
+## API Reference
+
+{{#each operations}}
+### {{operationId}}
+
+{{description}}
+
+**Method:** {{upperCase method}}  
+**Path:** {{path}}
+
+{{#if hasRequestBody}}
+**Request Type:** `{{pascalCase operationId}}Request`
+{{/if}}
+**Response Type:** `{{pascalCase operationId}}Response`
+
+{{/each}}
+
+## Error Handling
+
+All API methods return Zig errors. Common errors include:
+
+- `error.HttpError` - HTTP request failed
+- `error.OutOfMemory` - Memory allocation failed
+- `error.InvalidJson` - JSON parsing failed
+
+## License
+
+This SDK is generated code. See the main project for license information.
+
