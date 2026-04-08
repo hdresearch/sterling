@@ -5,43 +5,22 @@ Welcome to the Sterling documentation! Sterling is an OpenAPI SDK generator that
 ## Documentation Index
 
 ### Getting Started
-- **[GitHub Setup Instructions](GITHUB_SETUP_INSTRUCTIONS.md)** - Comprehensive guide for setting up Sterling with GitHub, including installation, configuration, development workflow, and contribution guidelines
+- **[GitHub Setup Instructions](GITHUB_SETUP_INSTRUCTIONS.md)** - Comprehensive guide for setting up Sterling with GitHub
 - **[Quick Reference](QUICK_REFERENCE.md)** - Essential commands, configuration templates, and common workflows
+
+### Architecture & Design  
+- **[Code Cannon Overview](CODE_CANNON.md)** - High-level architecture and design philosophy
+- **[Code Cannon Implementation](CODE_CANNON_IMPLEMENTATION.md)** - Detailed implementation guide and technical specifications
 
 ### Core Documentation
 - **[Main README](../README.md)** - Project overview and basic usage
 - **[Configuration Guide](../sterling.toml)** - Example configuration file
 - **[Examples](../examples/)** - Sample OpenAPI specifications and configurations
+- **[Features Overview](../FEATURES.md)** - Detailed feature documentation
 
-## Quick Links
-
-### Essential Commands
-```bash
-# Build Sterling
-zig build -Doptimize=ReleaseFast
-
-# Generate SDKs
-./zig-out/bin/sterling generate openapi.yaml
-
-# Run tests
-zig build test
-```
-
-### Supported Languages
-- **TypeScript** - fetch API, npm packaging
-- **Rust** - reqwest, Cargo integration  
-- **Python** - httpx, pip/PyPI publishing
-- **Go** - net/http, Go modules
-- **Zig** - std.http, package manager
-
-### Key Features
+## Key Features
 - Multi-language SDK generation
-- AI-powered code enhancement
+- AI-powered code enhancement (Code Cannon)
 - GitHub repository automation
 - Package publishing integration
 - Comprehensive templating system
-
----
-
-For detailed setup instructions, see [GitHub Setup Instructions](GITHUB_SETUP_INSTRUCTIONS.md).
-For quick command reference, see [Quick Reference](QUICK_REFERENCE.md).
