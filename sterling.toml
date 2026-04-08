@@ -1,0 +1,36 @@
+# Sterling SDK Generator Configuration
+
+[targets.typescript]
+language = "typescript"
+repository = "https://github.com/your-org/typescript-sdk"
+output_dir = "./generated/typescript"
+branch = "main"
+
+[targets.rust]
+language = "rust"
+repository = "https://github.com/your-org/rust-sdk"
+output_dir = "./generated/rust"
+branch = "main"
+
+[targets.python]
+language = "python"
+repository = "https://github.com/your-org/python-sdk"
+output_dir = "./generated/python"
+branch = "main"
+
+[targets.go]
+language = "go"
+repository = "https://github.com/your-org/go-sdk"
+output_dir = "./generated/go"
+branch = "main"
+
+[llm]
+provider = "anthropic"
+api_key = "${ANTHROPIC_API_KEY}"
+model = "claude-3-sonnet-20240229"
+max_retries = 3
+
+[output.docs]
+format = "mintlify"
+repository = "https://github.com/your-org/docs"
+output_dir = "./generated/docs"
