@@ -170,50 +170,39 @@ pub const SDKGenerator = struct {
     // ── TypeScript generation ───────────────────────────────────────────
 
     fn generateTypeScript(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
-        
-        // Create directory structure
-        self.makeDirRecursive(output_dir) catch {};
-        const src_dir = try std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir});
-        defer self.allocator.free(src_dir);
-        self.makeDirRecursive(src_dir) catch {};
-        
+        std.fs.cwd().makeDir(target.output_dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
+
+        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/client.ts", .{target.output_dir});
+        defer self.allocator.free(file_path);
+
         // Build context
         const ctx = try self.buildBaseContext();
-        try ctx.putString("class_name", "PetStore");
-        try ctx.putString("package_name", "petstore-sdk");
-        try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-        
+        try ctx.putString("client_name", "PetStoreClient");
+
         // Build operations
         const ops = try self.buildOperationContexts(ctx);
         try ctx.putList("operations", ops);
-        
-        // Build models
-        const models = try self.buildModelContexts(ctx);
-        try ctx.putList("models", models);
-        
-        // Generate client.ts
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/src/client.ts", .{output_dir});
-        defer self.allocator.free(client_path);
-        try self.renderTemplate("templates/typescript/client.ts.template", client_path, ctx);
-        
-        // Generate models.ts
-        const models_path = try std.fmt.allocPrint(self.allocator, "{s}/src/models.ts", .{output_dir});
-        defer self.allocator.free(models_path);
-        try self.renderTemplate("templates/typescript/models.ts.template", models_path, ctx);
-        
-        // Generate index.ts
-        const index_path = try std.fmt.allocPrint(self.allocator, "{s}/src/index.ts", .{output_dir});
-        defer self.allocator.free(index_path);
-        try self.renderTemplate("templates/typescript/index.ts.template", index_path, ctx);
-        
-        // Generate package.json
-        const package_path = try std.fmt.allocPrint(self.allocator, "{s}/package.json", .{output_dir});
-        defer self.allocator.free(package_path);
-        try self.renderTemplate("templates/typescript/package.json.template", package_path, ctx);
-        
-        std.debug.print("Generated TypeScript SDK at {s}\n", .{output_dir});
+
+        // Build schemas
+        const empty_schemas: []const *template.Context = &.{};
+        try ctx.putList("schemas", empty_schemas);
+
+        // Load and render template
+        const tmpl = try loadTemplate(self.allocator, "templates/typescript/client.ts.template");
+        defer self.allocator.free(tmpl);
+        var engine = template.Engine.init(self.allocator);
+        const content = try engine.render(tmpl, ctx);
+
+        const file = try std.fs.cwd().createFile(file_path, .{});
+        defer file.close();
+        try file.writeAll(content);
+
+        std.debug.print("Generated TypeScript client at {s}\n", .{file_path});
     }
+
     // ── Rust generation ─────────────────────────────────────────────────
 
     pub fn generateRust(self: *SDKGenerator, target: config.Config.Target) !void {
@@ -439,104 +428,12 @@ pub const SDKGenerator = struct {
     // ── Stub generators ─────────────────────────────────────────────────
 
     fn generatePython(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
-        
-        // Create directory structure
-        self.makeDirRecursive(output_dir) catch {};
-        
-        // Build context
-        const ctx = try self.buildBaseContext();
-        try ctx.putString("class_name", "PetStore");
-        try ctx.putString("package_name", "petstore_sdk");
-        try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-        
-        // Build operations
-        const ops = try self.buildOperationContexts(ctx);
-        try ctx.putList("operations", ops);
-        
-        // Build models
-        const models = try self.buildModelContexts(ctx);
-        try ctx.putList("models", models);
-        
-        // Generate client.py
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/client.py", .{output_dir});
-        defer self.allocator.free(client_path);
-        try self.renderTemplate("templates/python/client.py.template", client_path, ctx);
-        
-        // Generate models.py
-        const models_path = try std.fmt.allocPrint(self.allocator, "{s}/models.py", .{output_dir});
-        defer self.allocator.free(models_path);
-        try self.renderTemplate("templates/python/models.py.template", models_path, ctx);
-        
-        // Generate __init__.py
-        const init_path = try std.fmt.allocPrint(self.allocator, "{s}/__init__.py", .{output_dir});
-        defer self.allocator.free(init_path);
-        try self.renderTemplate("templates/python/__init__.py.template", init_path, ctx);
-        
-        // Generate pyproject.toml
-        const pyproject_path = try std.fmt.allocPrint(self.allocator, "{s}/pyproject.toml", .{output_dir});
-        defer self.allocator.free(pyproject_path);
-        try self.renderTemplate("templates/python/pyproject.toml.template", pyproject_path, ctx);
-        
-        std.debug.print("Generated Python SDK at {s}\n", .{output_dir});
-    }
-    fn generateGo(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
-        
-        // Create directory structure
-        self.makeDirRecursive(output_dir) catch {};
-        
-        // Build context
-        const ctx = try self.buildBaseContext();
-        try ctx.putString("package_name", "petstore");
-        try ctx.putString("module_name", "github.com/example/petstore-sdk");
-        try ctx.putString("go_version", "1.21");
-        try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-        
-        // Build operations
-        const ops = try self.buildOperationContexts(ctx);
-        try ctx.putList("operations", ops);
-        
-        // Build models
-        const models = try self.buildModelContexts(ctx);
-        try ctx.putList("models", models);
-        
-        // Generate client.go
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/client.go", .{output_dir});
-        defer self.allocator.free(client_path);
-        try self.renderTemplate("templates/go/client.go.template", client_path, ctx);
-        
-        // Generate models.go
-        const models_path = try std.fmt.allocPrint(self.allocator, "{s}/models.go", .{output_dir});
-        defer self.allocator.free(models_path);
-        try self.renderTemplate("templates/go/models.go.template", models_path, ctx);
-        
-        // Generate go.mod
-        const gomod_path = try std.fmt.allocPrint(self.allocator, "{s}/go.mod", .{output_dir});
-        defer self.allocator.free(gomod_path);
-        try self.renderTemplate("templates/go/go.mod.template", gomod_path, ctx);
-        
-        std.debug.print("Generated Go SDK at {s}\n", .{output_dir});
+        _ = self;
+        std.debug.print("Python generation not implemented yet for {s}\n", .{target.output_dir});
     }
 
-    fn renderTemplate(self: *SDKGenerator, template_path: []const u8, output_path: []const u8, ctx: *template.Context) !void {
-        const tmpl = try loadTemplate(self.allocator, template_path);
-        defer self.allocator.free(tmpl);
-        
-        var engine = template.Engine.init(self.allocator);
-        const content = try engine.render(tmpl, ctx);
-        defer self.allocator.free(content);
-        
-        const file = try std.fs.cwd().createFile(output_path, .{});
-        defer file.close();
-        try file.writeAll(content);
-    }
-    
-    fn buildModelContexts(self: *SDKGenerator, base_ctx: *template.Context) ![]const *template.Context {
+    fn generateGo(self: *SDKGenerator, target: config.Config.Target) !void {
         _ = self;
-        _ = base_ctx;
-        // For now, return empty models - this would be expanded to parse OpenAPI schemas
-        const empty_models: []const *template.Context = &.{};
-        return empty_models;
+        std.debug.print("Go generation not implemented yet for {s}\n", .{target.output_dir});
     }
 };

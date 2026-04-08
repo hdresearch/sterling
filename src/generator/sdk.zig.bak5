@@ -517,26 +517,4 @@ pub const SDKGenerator = struct {
         try self.renderTemplate("templates/go/go.mod.template", gomod_path, ctx);
         
         std.debug.print("Generated Go SDK at {s}\n", .{output_dir});
-    }
-
-    fn renderTemplate(self: *SDKGenerator, template_path: []const u8, output_path: []const u8, ctx: *template.Context) !void {
-        const tmpl = try loadTemplate(self.allocator, template_path);
-        defer self.allocator.free(tmpl);
-        
-        var engine = template.Engine.init(self.allocator);
-        const content = try engine.render(tmpl, ctx);
-        defer self.allocator.free(content);
-        
-        const file = try std.fs.cwd().createFile(output_path, .{});
-        defer file.close();
-        try file.writeAll(content);
-    }
-    
-    fn buildModelContexts(self: *SDKGenerator, base_ctx: *template.Context) ![]const *template.Context {
-        _ = self;
-        _ = base_ctx;
-        // For now, return empty models - this would be expanded to parse OpenAPI schemas
-        const empty_models: []const *template.Context = &.{};
-        return empty_models;
-    }
-};
+    }};
