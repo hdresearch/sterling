@@ -1,7 +1,0 @@
-[project]
-name = "petstore"
-version = "1.0.0"
-
-[[targets]]
-language = "zig"
-output_dir = "./generated/zig"
