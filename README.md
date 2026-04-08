@@ -16,6 +16,13 @@ Sterling currently generates high-quality SDKs for **5 programming languages**:
 
 ## 🎯 Core Features
 
+## 📚 Documentation
+
+- **[Setup Guide](docs/GITHUB_SETUP_INSTRUCTIONS.md)** - Comprehensive installation and configuration guide
+- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Essential commands and configuration templates
+- **[Documentation Index](docs/README.md)** - Complete documentation overview
+- **[Examples](examples/)** - Sample configurations and OpenAPI specifications
+
 ### Multi-Language SDK Generation
 - **Complete OpenAPI 3.0 support** - Full specification compliance
 - **Type-safe code generation** - Strong typing across all target languages
