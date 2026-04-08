@@ -1,0 +1,7 @@
+module {{module_name}}
+
+go {{go_version}}
+
+require (
+	// No external dependencies - uses standard library only
+)
