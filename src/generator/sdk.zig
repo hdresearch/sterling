@@ -209,7 +209,11 @@ pub const SDKGenerator = struct {
         try self.renderTemplate("templates/typescript/index.ts.template", index_path, ctx);
         
         // Generate package.json
-        const package_path = try std.fmt.allocPrint(self.allocator, "{s}/package.json", .{output_dir});
+        
+        // Generate tsconfig.json
+        const tsconfig_path = try std.fmt.allocPrint(self.allocator, "{s}/tsconfig.json", .{output_dir});
+        defer self.allocator.free(tsconfig_path);
+        try self.renderTemplate("templates/typescript/tsconfig.json.template", tsconfig_path, ctx);        const package_path = try std.fmt.allocPrint(self.allocator, "{s}/package.json", .{output_dir});
         defer self.allocator.free(package_path);
         try self.renderTemplate("templates/typescript/package.json.template", package_path, ctx);
         

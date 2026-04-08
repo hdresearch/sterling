@@ -3,15 +3,15 @@
 """
 
 import httpx
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
-class PetStoreClient:
+class {{class_name}}Client:
     """{{spec_title}} Python SDK"""
     
     def __init__(
         self,
         api_key: Optional[str] = None,
-        base_url: str = "{{default_base_url}}",
+        base_url: str = "{{base_url}}",
         timeout: float = 30.0,
         headers: Optional[Dict[str, str]] = None
     ):
@@ -45,24 +45,21 @@ class PetStoreClient:
         """Close the HTTP client"""
         self.client.close()
 
-    def list_pets(self, limit: Optional[int] = None) -> Dict[str, Any]:
-        """List all pets"""
-        params = {}
-        if limit is not None:
-            params["limit"] = limit
+{{#each operations}}
+    def {{snake_name}}(self{{#if has_path_params}}, path_param: str{{/if}}{{#if has_body}}, body: Dict[str, Any]{{/if}}) -> Dict[str, Any]:
+        """{{summary}}"""
+        {{#if has_path_params}}
+        path = "{{path}}".replace("{petId}", str(path_param))
+        {{else}}
+        path = "{{path}}"
+        {{/if}}
         
-        response = self.client.get("/pets", params=params)
+        {{#if has_body}}
+        response = self.client.request("{{method}}", path, json=body)
+        {{else}}
+        response = self.client.request("{{method}}", path)
+        {{/if}}
         response.raise_for_status()
         return response.json()
 
-    def create_pet(self, pet_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new pet"""
-        response = self.client.post("/pets", json=pet_data)
-        response.raise_for_status()
-        return response.json()
-
-    def get_pet(self, pet_id: int) -> Dict[str, Any]:
-        """Get a pet by ID"""
-        response = self.client.get(f"/pets/{pet_id}")
-        response.raise_for_status()
-        return response.json()
+{{/each}}

@@ -2,16 +2,22 @@
 {{spec_title}} v{{spec_version}}
 """
 
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
+from typing import Optional, Dict, Any
+from dataclasses import dataclass
 
-class Pet(BaseModel):
-    """Pet model"""
-    id: Optional[int] = None
-    name: str
-    tag: Optional[str] = None
+{{#each models}}
+@dataclass
+class {{name}}:
+    """{{description}}"""
+{{#each properties}}
+    {{name}}: {{#unless required}}Optional[{{/unless}}{{type}}{{#unless required}}] = None{{/unless}}
+{{/each}}
 
-class Error(BaseModel):
-    """Error model"""
-    code: int
-    message: str
+{{/each}}
+
+@dataclass
+class ApiError:
+    """API Error response"""
+    code: Optional[int] = None
+    message: str = ""
+    details: Optional[Dict[str, Any]] = None

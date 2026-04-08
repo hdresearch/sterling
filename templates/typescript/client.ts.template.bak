@@ -94,7 +94,7 @@ export class {{class_name}}Client {
       }
       
       return await response.text() as unknown as T;
-    } catch (error: any) {
+    } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
         throw new Error(`Request timeout after ${this.timeout}ms`);
