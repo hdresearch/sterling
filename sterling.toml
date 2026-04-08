@@ -1,4 +1,7 @@
-# Sterling SDK Generator Configuration
+[project]
+name = "petstore"
+version = "1.0.0"
+description = "Pet Store API SDK"
 
 [targets.typescript]
 language = "typescript"
@@ -23,14 +26,3 @@ language = "go"
 repository = "https://github.com/your-org/go-sdk"
 output_dir = "./generated/go"
 branch = "main"
-
-[llm]
-provider = "anthropic"
-api_key = "${ANTHROPIC_API_KEY}"
-model = "claude-3-sonnet-20240229"
-max_retries = 3
-
-[output.docs]
-format = "mintlify"
-repository = "https://github.com/your-org/docs"
-output_dir = "./generated/docs"
