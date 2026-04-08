@@ -1,9 +1,0 @@
-[project]
-name = "petstore"
-version = "1.0.0"
-description = "Pet Store API SDK"
-
-[targets.typescript]
-language = "typescript"
-output_dir = "./generated/typescript"
-

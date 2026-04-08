@@ -1,8 +1,0 @@
-[project]
-name = "petstore"
-version = "1.0.0"
-description = "Pet Store API SDK"
-
-[targets.go]
-language = "go"
-output_dir = "./generated/go"

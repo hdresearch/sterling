@@ -1,9 +1,0 @@
-[project]
-name = "petstore"
-version = "1.0.0"
-description = "Pet Store API SDK"
-
-[targets.rust]
-language = "rust"
-output_dir = "./generated/rust"
-
