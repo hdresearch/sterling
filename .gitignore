@@ -8,3 +8,7 @@ sterling/
 zig-out/
 generated/
 sterling/
+# Generated artifacts
+generated/
+zig-out/
+.zig-cache/
