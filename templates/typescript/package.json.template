@@ -1,0 +1,12 @@
+{
+  "name": "{{package_name}}",
+  "version": "{{project_version}}",
+  "description": "SDK for {{spec_title}}",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "license": "MIT"
+}

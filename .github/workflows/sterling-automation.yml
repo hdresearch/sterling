@@ -1,0 +1,44 @@
+name: Sterling SDK Generation
+
+on:
+  repository_dispatch:
+    types: [openapi-updated]
+  workflow_dispatch:
+    inputs:
+      openapi_url:
+        description: 'URL to OpenAPI specification'
+        required: true
+        default: 'https://raw.githubusercontent.com/hdresearch/chelsea/main/openapi.yaml'
+
+jobs:
+  generate-sdks:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Sterling
+      uses: actions/checkout@v4
+      
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: 0.15.2
+        
+    - name: Build Sterling
+      run: zig build -Doptimize=ReleaseFast
+      
+    - name: Download OpenAPI Spec
+      run: |
+        curl -o openapi.yaml "${{ github.event.inputs.openapi_url || 'https://raw.githubusercontent.com/hdresearch/chelsea/main/openapi.yaml' }}"
+        
+    - name: Generate SDKs
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        ./zig-out/bin/sterling generate --spec openapi.yaml --config sterling.toml --enhance
+        
+    - name: Sync Documentation
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        ./sync-vers-docs.sh
