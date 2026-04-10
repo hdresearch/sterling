@@ -1,0 +1,1 @@
+aws-secret 600-secrets dev-600-secrets-ini

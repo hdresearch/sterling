@@ -1,0 +1,11 @@
+{
+    "[typescript]": {
+        "editor.tabSize": 2
+    },
+    "[rust]": {
+        "editor.tabSize": 4,
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true,
+    },
+    "editor.rename.enablePreview": false
+}

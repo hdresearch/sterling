@@ -1,0 +1,16 @@
+
+Version: Ubuntu 22.04.5 LTS
+
+Please execute the following steps as root:
+
+        apt-get install pkg-config
+        apt-get install libssl-dev
+
+Then, execute the following (official?) command as your login:
+
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+WARNING: When building, Rust compilation may fail at 'aws-sdk-s3' with
+         a SIGKILL (9) error, due to running out of memory.  It appears
+         there must be at least several gigabytes of memory, e.g. 4GB,
+         for project compilation to totally succeed.

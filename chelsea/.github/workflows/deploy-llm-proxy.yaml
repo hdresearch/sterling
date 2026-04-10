@@ -1,0 +1,135 @@
+name: Deploy LLM Proxy
+
+on:
+  push:
+    branches: ["production"]
+    paths:
+      - "crates/llm_proxy/**"
+      - "Cargo.lock"
+      - ".github/workflows/deploy-llm-proxy.yaml"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Force ECS deployment after push"
+        type: boolean
+        default: true
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: llm-proxy
+  ECS_CLUSTER: llm-proxy-production
+  ECS_SERVICE: llm-proxy-production
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "llm-proxy-deploy"
+          cache-on-failure: true
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Run unit tests
+        run: /home/ubuntu/.cargo/bin/cargo test -p llm_proxy --lib
+
+      - name: Run integration tests
+        run: /home/ubuntu/.cargo/bin/cargo nextest run -p llm_proxy --test key_management --test budget_enforcement --test credits --test spend_tracking
+
+  build-and-push:
+    name: Build & Push to ECR
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute image tag
+        id: meta
+        run: |
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          echo "image_tag=sha-${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+          echo "full_image=${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:sha-${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/llm_proxy/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.image_tag }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "### 📦 LLM Proxy Image Pushed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tag:** \`${{ steps.meta.outputs.image_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${{ steps.meta.outputs.full_image }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy to ECS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # Auto-deploy on push to production; on workflow_dispatch, respect the input toggle
+    if: github.event_name == 'push' || inputs.deploy
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --service "${{ env.ECS_SERVICE }}" \
+            --force-new-deployment \
+            --no-cli-pager
+
+      - name: Wait for deployment to stabilize
+        run: |
+          echo "Waiting for ECS service to stabilize (up to 10 minutes)..."
+          aws ecs wait services-stable \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services "${{ env.ECS_SERVICE }}"
+          echo "✅ Deployment stable"
+
+      - name: Summary
+        run: |
+          echo "### 🚀 LLM Proxy Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Cluster:** \`${{ env.ECS_CLUSTER }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Service:** \`${{ env.ECS_SERVICE }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${{ needs.build-and-push.outputs.image_tag }}\`" >> "$GITHUB_STEP_SUMMARY"

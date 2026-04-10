@@ -1,0 +1,859 @@
+###############################################################################
+#
+# test.eagle --
+#
+# This file contains the test suite helper script package for this project.
+# The procedures contained herein are designed to make the testing process
+# more maintainable and repeatable.
+#
+###############################################################################
+
+#
+# NOTE: Use our own namespace here because even though we may not directly
+#       support namespaces ourselves, we do not want to pollute the global
+#       namespace if this script actually ends up being evaluated in Tcl.
+#
+namespace eval ::Chelsea {
+  proc initializeApiMappings { {force false} } {
+    variable chelsea_api_mappings
+    variable chelsea_package_directory
+
+    if {$force || ![info exists chelsea_api_mappings]} then {
+      set fileName [file join \
+          $chelsea_package_directory data apis mappings.tsv]
+
+      if {[file exists $fileName]} then {
+        set data [readFile $fileName]
+        set data [string map [list \r\n \n] $data]
+        set lines [split $data \n]
+
+        foreach line $lines {
+          set trimLine [string trim $line]
+
+          if {[string length $trimLine] == 0 || \
+              [string index $trimLine 0] eq "#"} then {
+            continue
+          }
+
+          set fields [split $line \t]
+          set fieldLength [llength $fields]
+
+          if {$fieldLength == 0} then {
+            continue
+          }
+
+          if {$fieldLength != 5} then {
+            error [appendArgs \
+                "there must be exactly five fields: " $line]
+          }
+
+          set type [lindex $fields 0]
+
+          if {$type ni [list public internal proxy]} then {
+            error [appendArgs \
+                "template type must be public, internal, or proxy: " \
+                $line]
+          }
+
+          set name [lindex $fields 1]
+
+          if {![isValidIdentifier $name]} then {
+            error [appendArgs \
+                "endpoint name must be an identifier: " \
+                $line]
+          }
+
+          set method [lindex $fields 2]
+
+          if {$method ni [getHttpVerbs]} then {
+            error [appendArgs \
+                "method must be HTTP verb: " $line]
+          }
+
+          set path [lindex $fields 3]
+
+          if {![uri isvalid [string map \
+              [list /%id% "" /%tag_name% "" /%repo_name% "" /%org_name% "" /%key% ""] $path] Relative]} then {
+            error [appendArgs "invalid path: " $line]
+          }
+
+          set postData [lindex $fields 4]
+
+          if {[string length $postData] != 0 && \
+              $postData ne "%json%"} then {
+            error [appendArgs \
+                "bad POST data, must be empty -OR- \"%json%\": " \
+                $line]
+          }
+
+          set mappings($type,$name) \
+              [list $type $name $method $path $postData]
+        }
+
+        foreach name [array names mappings] {
+          set chelsea_api_mappings($name) $mappings($name)
+        }
+      }
+    }
+  }
+
+  proc extractTestApiKey {} {
+    global path
+
+    if {[info exists path]} then {
+      set fileName [file join [file dirname $path] public-api.sh]
+
+      if {[file exists $path] && [regexp -skip 1 -line -- \
+          {^AUTH_TOKEN="(.+)"$} [readFile $fileName] apiKey]} then {
+        return $apiKey
+      }
+    }
+
+    return ""
+  }
+
+  nproc makeApiCall {
+          type name {id ""} {json ""} {proxy false} {parameters ""}
+          {tag_name ""} {repo_name ""} {org_name ""} {key ""} } {
+    variable chelsea_api_mappings
+
+    if {$type ni [list public internal proxy]} then {
+      error "template type must be public, internal, or proxy"
+    }
+
+    if {![isValidIdentifier $name]} then {
+      error "endpoint name must be an identifier"
+    }
+
+    if {![info exists chelsea_api_mappings($type,$name)]} then {
+      error [appendArgs \
+          "missing endpoint mapping: " $type ", " $name]
+    }
+
+    set mapping $chelsea_api_mappings($type,$name)
+    lassign $mapping type name method path data
+
+    if {[string first %id% $path] != -1 && ![isValidId $id]} then {
+      error [appendArgs \
+          "endpoint requires a valid identifier: " $mapping]
+    }
+
+    if {[string first %tag_name% $path] != -1 && $tag_name eq ""} then {
+      error [appendArgs \
+          "endpoint requires a tag name: " $mapping]
+    }
+
+    if {[string first %repo_name% $path] != -1 && $repo_name eq ""} then {
+      error [appendArgs \
+          "endpoint requires a repo name: " $mapping]
+    }
+
+    if {[string first %org_name% $path] != -1 && $org_name eq ""} then {
+      error [appendArgs \
+          "endpoint requires an org name: " $mapping]
+    }
+
+    if {[string first %key% $path] != -1 && $key eq ""} then {
+      error [appendArgs \
+          "endpoint requires a key: " $mapping]
+    }
+
+    if {[string first %json% $data] != -1 && ![isValidJson $json]} then {
+      error [appendArgs \
+          "endpoint requires valid JSON: " $mapping]
+    }
+
+    if {[string is not boolean -strict $proxy]} then {
+      error [appendArgs \
+          "proxy flag must be a valid boolean value: " $proxy]
+    }
+
+    set baseUri ""
+    set host ""
+    set apiKey none
+
+    if {$type in [list public proxy]} then {
+      if {$proxy} then {
+        global proxyApiHost
+
+        if {[info exists proxyApiHost]} then {
+          set baseUri $proxyApiHost
+        }
+      } else {
+        global publicApiHost
+
+        if {[info exists publicApiHost]} then {
+          set baseUri $publicApiHost
+        }
+      }
+
+      global headerHost
+
+      if {[info exists headerHost]} then {
+        set host $headerHost
+      }
+
+      set apiKey [extractTestApiKey]; # TODO: Use AWS.
+    } elseif {$type eq "internal"} then {
+      if {$proxy} then {
+        error "internal API does not support using the proxy"
+      } else {
+        global internalApiHost
+
+        if {[info exists internalApiHost]} then {
+          set baseUri $internalApiHost
+        }
+      }
+    }
+
+    return [execApiCurlCommand \
+        baseUri $baseUri host $host apiKey $apiKey method $method \
+        path [string map [list %id% $id %tag_name% $tag_name %repo_name% $repo_name %org_name% $org_name %key% $key] $path] data [string map \
+        [list %json% $json] $data] query $parameters]
+  }
+
+  proc getJsonTemplateFileName { type name } {
+    variable chelsea_package_directory
+
+    if {$type ni [list public internal proxy]} then {
+      error "template type must be public, internal, or proxy"
+    }
+
+    if {![isValidIdentifier $name]} then {
+      error "template name must be an identifier"
+    }
+
+    return [file join \
+        $chelsea_package_directory data json $type \
+        [appendArgs $name .jsont]]
+  }
+
+  proc getJsonTemplate { type name } {
+    set fileName [getJsonTemplateFileName $type $name]
+
+    if {![file exists $fileName]} then {
+      error [appendArgs \
+          "template file does not exist: " $fileName]
+    }
+
+    return [readFile $fileName]
+  }
+
+  proc processJsonTemplate { type value } {
+    set result $value; set startIndex 0
+
+    while {[set startIndex [string first % $result $startIndex]] != -1} {
+      set stopIndex [string first % $result [expr {$startIndex + 1}]]
+
+      if {$stopIndex == -1} then {
+        error [appendArgs \
+            "malformed json template token at index " $startIndex \
+            " within value: " $value]
+      }
+
+      set token [string range $result $startIndex $stopIndex]
+      set name [string range $token 1 end-1]
+      set fileName [getJsonTemplateFileName $type $name]
+
+      if {[file exists $fileName]} then {
+        set result [string map [list $token [processJsonTemplate \
+            $type [readFile $fileName]]] $result]; # RECURSIVE
+
+        continue
+      } else {
+        upvar 1 $name variable
+
+        if {[info exists variable]} then {
+          set result [string map [list $token $variable] $result]
+          continue
+        }
+      }
+
+      set startIndex [expr {$stopIndex + 1}]
+    }
+
+    return $result
+  }
+
+  proc setupJsonTemplateVariables {} {
+    uplevel 1 {
+      set vm_id [guid new]
+      set commit_id [guid new]
+    }
+  }
+
+  proc cleanupJsonTemplateVariables {} {
+    uplevel 1 [list unset -nocomplain vm_id commit_id]
+  }
+
+  nproc execApiCurlCommand {
+          {baseUri ""} {host ""} {apiKey ""} {method GET} {path ""} {data ""}
+          {query ""} } {
+    return [execCurlCommand \
+        baseUri $baseUri host $host apiKey $apiKey method $method path $path \
+        data $data query $query]
+  }
+
+  nproc execInternalApiCurlCommand {
+          {host ""} {apiKey ""} {method GET} {path ""} {data ""} {query ""} } {
+    global internalApiHost
+
+    if {![info exists internalApiHost]} then {
+      error "missing base URI for internal API"
+    }
+
+    return [execCurlCommand \
+        baseUri $internalApiHost host $host apiKey $apiKey method $method \
+        path $path data $data query $query]
+  }
+
+  nproc execPublicApiCurlCommand {
+          {host ""} {apiKey ""} {method GET} {path ""} {data ""} {query ""} } {
+    global publicApiHost
+
+    if {![info exists publicApiHost]} then {
+      error "missing base URI for public API"
+    }
+
+    return [execCurlCommand \
+        baseUri $publicApiHost host $host apiKey $apiKey method $method \
+        path $path data $data query $query]
+  }
+
+  proc execApiSshCommand { ip id withRoot args } {
+    global internalApiHost
+
+    set temporaryKeyFileName [file tempname]
+
+    try {
+      writeSshKeyToFile $internalApiHost [extractTestApiKey] $id \
+          $temporaryKeyFileName
+
+      return [eval execSshCommand \
+          [list $ip] 22 [list $id] [list $temporaryKeyFileName] \
+          [list $withRoot] $args]
+    } finally {
+      if {[isCleanupEnabled] && \
+          [file exists $temporaryKeyFileName]} then {
+        catch {file delete $temporaryKeyFileName}
+        unset -nocomplain temporaryKeyFileName
+      }
+    }
+  }
+
+  nproc getViaJsonPaths {
+          json jpaths {channel stdout} {default ""} {quiet false} } {
+    if {[catch {
+      getOrSetViaJsonPaths $json $jpaths
+    } result] == 0} then {
+      return $result
+    } else {
+      if {!$quiet} then {
+        tputs $channel [appendArgs \
+            "==== ERROR: failure getting " \
+            [list $jpaths] " from JSON: " $json \n]
+      }
+
+      if {[string length $default] > 0} then {
+        return $default
+      } else {
+        error $result
+      }
+    }
+  }
+
+  proc getServiceFiles {} {
+    set result [list]; set patterns [list]
+
+    lappend patterns /dev/chelsea
+    lappend patterns /root/.local/share/chelsea-manager/*
+    lappend patterns /root/.ssh/known_hosts
+    lappend patterns /tmp/vm-host.sock
+    lappend patterns /tmp/Dockerfile.test
+    lappend patterns /tmp/boatswain/*
+    lappend patterns /tmp/chelseasnap_*
+    lappend patterns /tmp/upload_*.tar
+    lappend patterns /tmp/tar_*
+    lappend patterns /tmp/dockerdump_*.tar
+    lappend patterns /tmp/*-snapshot
+    lappend patterns /tmp/*-memory
+    lappend patterns /tmp/%guid%
+    lappend patterns /tmp/%guid%.json
+    lappend patterns /tmp/vm-%guid%.sock
+    lappend patterns /tmp/esc_*
+    lappend patterns /tmp/etd_*
+    lappend patterns /var/run/user/%uid%/tmp/esc_*
+    lappend patterns /var/run/user/%uid%/tmp/etd_*
+
+    set subPatterns(guid) [globForUniqueIdentifier]
+    set subPatterns(uid) [getUid]
+
+    foreach pattern $patterns {
+      set pattern [string map [list \
+          %guid% $subPatterns(guid) %uid% $subPatterns(uid)] $pattern]
+
+      if {[string match */root/* $pattern]} then {
+        set command [eval \
+            buildExecCommand false true find . -path [list $pattern]]
+
+        set savedPreviousPid [info previouspid]
+
+        try {
+          eval lappend result [evalExecCommand $command]
+        } finally {
+          info previouspid true $savedPreviousPid
+        }
+      } else {
+        eval lappend result [glob \
+            -nocomplain -types dotfiles -- $pattern]
+      }
+    }
+
+    return $result
+  }
+
+  proc matchRunningProcesses { name } {
+    set command [eval \
+        buildExecCommand false true ps -C [list $name] -o pid=]
+
+    if {[catch {
+      set savedPreviousPid [info previouspid]
+
+      try {
+        evalExecCommand $command
+      } finally {
+        info previouspid true $savedPreviousPid
+      }
+    } result] == 0} then {
+      set pattern {(?:^|\s+)(\d+)(?:\s+|$)}
+
+      return [regexp -all -inline -skip 1 -- $pattern $result]
+    } else {
+      error $result
+    }
+  }
+
+  proc getChelseaProcesses {} {
+    return [matchRunningProcesses chelsea]
+  }
+
+  proc getFirecrackerProcesses {} {
+    return [matchRunningProcesses firecracker]
+  }
+
+  proc getCloudHypervisorProcesses {} {
+    return [matchRunningProcesses cloud-hypervisor]
+  }
+
+  proc getLogicalVolumes {} {
+    set command [eval buildExecCommand false true dmsetup ls]
+
+    if {[catch {
+      set savedPreviousPid [info previouspid]
+
+      try {
+        evalExecCommand $command
+      } finally {
+        info previouspid true $savedPreviousPid
+      }
+    } result] == 0} then {
+      set pattern {^([_\-0-9A-Z])+\s+\(\d+:\d+\)$}
+
+      return [regexp -all -line -inline -skip 1 -- $pattern $result]
+    } else {
+      error $result
+    }
+  }
+
+  proc getLoopDevices {} {
+    set command [eval buildExecCommand false true losetup -n -a --list]
+
+    if {[catch {
+      set savedPreviousPid [info previouspid]
+
+      try {
+        evalExecCommand $command
+      } finally {
+        info previouspid true $savedPreviousPid
+      }
+    } result] == 0} then {
+      set pattern {^(.*)\s+\d+\s+\d+\s+[01]\s+[01]\s+(.*)$}
+
+      return [regexp -all -line -inline -skip 1 -- $pattern $result]
+    } else {
+      error $result
+    }
+  }
+
+  proc getWireGuardInterfacesForNamespace { {namespace ""} } {
+    set command [list ip]
+
+    if {[string length $namespace] > 0} then {
+      lappend command -n $namespace
+    }
+
+    lappend command -o link show type wireguard
+    set command [eval buildExecCommand false true $command]
+
+    if {[catch {
+      set savedPreviousPid [info previouspid]
+
+      try {
+        evalExecCommand $command
+      } finally {
+        info previouspid true $savedPreviousPid
+      }
+    } result] == 0} then {
+      set pattern {^\d+: ([^:]+): }
+
+      return [regexp -all -line -inline -skip 1 -- $pattern $result]
+    } else {
+      error $result
+    }
+  }
+
+  proc getWireGuardInterfaces {} {
+    set result [getWireGuardInterfacesForNamespace]; # default
+
+    if {![info exists ::no(query,nonDefaultNetworkNamespaces)]} then {
+      foreach namespace [getNetworkNamespaces] {
+        eval lappend result \
+            [getWireGuardInterfacesForNamespace $namespace]
+      }
+    }
+
+    return $result
+  }
+
+  proc getNetworkNamespaces {} {
+    set command [eval buildExecCommand false true ip netns list]
+
+    if {[catch {
+      set savedPreviousPid [info previouspid]
+
+      try {
+        evalExecCommand $command
+      } finally {
+        info previouspid true $savedPreviousPid
+      }
+    } result] == 0} then {
+      set pattern {^(.*)\s+\(id:\s+\d+\)$}
+
+      return [regexp -all -line -inline -skip 1 -- $pattern $result]
+    } else {
+      error $result
+    }
+  }
+
+  proc getNetworkDevices {} {
+    set command [eval buildExecCommand false true ip link show]
+
+    if {[catch {
+      set savedPreviousPid [info previouspid]
+
+      try {
+        evalExecCommand $command
+      } finally {
+        info previouspid true $savedPreviousPid
+      }
+    } result] == 0} then {
+      set pattern {\s+link-netns\s+([^\s]*)$}
+
+      return [regexp -all -line -inline -skip 1 -- $pattern $result]
+    } else {
+      error $result
+    }
+  }
+
+  #
+  # HACK: This procedure will be called if any test fails.  By default, it
+  #       will disable all test cleanup, to assist in troubleshooting test
+  #       failure(s).  It is recommended that the following (additional)
+  #       command line options be used when troubleshooting failing tests,
+  #       prior to the first "-file" command line option name / value:
+  #
+  #       -runtimeoption +cleanupDisabled
+  #       -runtimeoption +stopDisabled
+  #       -runtimeoption +breakOnTestFailure
+  #
+  #       Optionally, when troubleshooting a specific (failing) test, the
+  #       following command line option may be used immediately after the
+  #       first "-file" option name / value:
+  #
+  #       -match chelsea-X.Y
+  #
+  #       Also, if you want to force tests to be run that require specific
+  #       test constraints to be present, you can manually force those test
+  #       constraints to be added using the following command line option
+  #       immediately after the first "-file" option name / value, e.g.:
+  #
+  #       -constraints firecrackerBuild
+  #
+  #       Example with preceding "-file" option name / value:
+  #
+  #       -file ./tests/all.eagle -constraints firecrackerBuild
+  #
+  proc ::testFailure {} {; # HOOK
+    #
+    # NOTE: Attempt to figure out exactly which of the tests failed,
+    #       if possible.
+    #
+    upvar 1 testName testName
+
+    if {[info exists testName(true)]} then {
+      set currentName $testName(true); # which test?
+    } else {
+      set currentName <unknown>
+    }
+
+    #
+    # HACK: We know that a test has failed.  Break into the (script)
+    #       debugger if requested, in order to make troubleshooting
+    #       easier.
+    #
+    if {[hasRuntimeOption breakOnTestFailure]} then {
+      host result Return [appendArgs \
+          "WARNING: Breaking into script debugger due to test \"" \
+          $currentName "\" failure.\n"]
+
+      debug emergency {now break}; # enter interactive loop now
+    }
+
+    #
+    # HACK: Finally, disable test cleanup if (it was) still enabled.
+    #       This is not perfect because the test specific "cleanup"
+    #       block was already evaluated by this pointer; however, it
+    #       can prevent any subsequent "global" (e.g. epilogue, etc)
+    #       test suite cleanup.
+    #
+    if {[isCleanupEnabled] && \
+        ![info exists ::no(NoDisableCleanupForTest)] && \
+        ![info exists ::env(NoDisableCleanupForTest)]} then {
+      set ::env(NoCleanupEnabled) [list $currentName [clock seconds]]
+      set ::env(NO_FETCH_FS_MOVE) 1; # copy instead.
+      set ::env(NO_FETCH_FS_CLEANUP) 1; # no delete.
+
+      host result Return [appendArgs \
+          "WARNING: Disabled subsequent test cleanup due to test \"" \
+          $currentName "\" failure.\n"]
+    }
+  }
+
+  proc ::afterRecordTestStatistics {} {; # HOOK
+    upvar 2 array array
+    upvar 2 index index
+
+    if {![array exists array]} then {return}
+    if {![info exists index]} then {return}
+    if {$index ni [list before after]} then {return}
+
+    ###########################################################################
+
+    if {[info exists ::no(query,serviceFiles)] || \
+        [catch {getServiceFiles} list]} then {
+      set list [list]
+    }
+
+    set array(serviceFiles,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) serviceFiles] != -1} then {
+      set array(serviceFiles,$index,list) $list
+    }
+
+    ###########################################################################
+
+    if {[info exists ::no(query,chelseaProcesses)] || \
+        [catch {getChelseaProcesses} list]} then {
+      set list [list]
+    }
+
+    set array(chelseaProcesses,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) chelseaProcesses] != -1} then {
+      set array(chelseaProcesses,$index,list) $list
+    }
+
+    ###########################################################################
+
+    if {[info exists ::no(query,firecrackerProcesses)] || \
+        [catch {getFirecrackerProcesses} list]} then {
+      set list [list]
+    }
+
+    set array(firecrackerProcesses,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) firecrackerProcesses] != -1} then {
+      set array(firecrackerProcesses,$index,list) $list
+    }
+
+    ###########################################################################
+
+    if {[info exists ::no(query,cloudHypervisorProcesses)] || \
+        [catch {getCloudHypervisorProcesses} list]} then {
+      set list [list]
+    }
+
+    set array(cloudHypervisorProcesses,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) cloudHypervisorProcesses] != -1} then {
+      set array(cloudHypervisorProcesses,$index,list) $list
+    }
+
+    ###########################################################################
+
+    if {[info exists ::no(query,logicalVolumes)] || \
+        [catch {getLogicalVolumes} list]} then {
+      set list [list]
+    }
+
+    set array(logicalVolumes,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) logicalVolumes] != -1} then {
+      set array(logicalVolumes,$index,list) $list
+    }
+
+    ###########################################################################
+
+    if {[info exists ::no(query,loopDevices)] || \
+        [catch {getLoopDevices} list]} then {
+      set list [list]
+    }
+
+    set array(loopDevices,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) loopDevices] != -1} then {
+      set array(loopDevices,$index,list) $list
+    }
+
+    ###########################################################################
+
+    if {[info exists ::no(query,networkNamespaces)] || \
+        [catch {getNetworkNamespaces} list]} then {
+      set list [list]
+    }
+
+    set array(networkNamespaces,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) networkNamespaces] != -1} then {
+      set array(networkNamespaces,$index,list) $list
+    }
+
+    ###########################################################################
+
+    if {[info exists ::no(query,networkDevices)] || \
+        [catch {getNetworkDevices} list]} then {
+      set list [list]
+    }
+
+    set array(networkDevices,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) networkDevices] != -1} then {
+      set array(networkDevices,$index,list) $list
+    }
+
+    ###########################################################################
+
+    if {[info exists ::no(query,wireGuardInterfaces)] || \
+        [catch {getWireGuardInterfaces} list]} then {
+      set list [list]
+    }
+
+    set array(wireGuardInterfaces,$index) [llength $list]
+
+    if {[info exists array(listed,$index)] && [lsearch \
+        -exact $array(listed,$index) wireGuardInterfaces] != -1} then {
+      set array(wireGuardInterfaces,$index,list) $list
+    }
+  }
+
+  proc ::beforeReportTestStatistics {} {; # HOOK
+    upvar 1 statistics statistics; # [reportTestStatistics]
+
+    if {![info exists statistics]} then {return}
+
+    lappend statistics serviceFiles;             # [getServiceFiles]
+    lappend statistics chelseaProcesses;         # [getChelseaProcesses]
+    lappend statistics firecrackerProcesses;     # [getFirecrackerProcesses]
+    lappend statistics cloudHypervisorProcesses; # [getCloudHypervisorProcesses]
+    lappend statistics logicalVolumes;           # [getLogicalVolumes]
+    lappend statistics loopDevices;              # [getLoopDevices]
+    lappend statistics networkNamespaces;        # [getNetworkNamespaces]
+    lappend statistics networkDevices;           # [getNetworkDevices]
+    lappend statistics wireGuardInterfaces;      # [getWireGuardInterfaces]
+  }
+
+  proc maybeLoadTestSettings { {quiet false} } {
+    global commonConstraints
+
+    if {![info exists commonConstraints]} then {
+      set commonConstraints [list eagle]; # TODO: Unknown.
+    }
+
+    global path
+
+    if {[info exists path]} then {
+      set fileName [file join $path settings.eagle]
+
+      if {[file exists $fileName]} then {
+        if {[catch {
+          uplevel 1 [list source $fileName]
+        } error] == 0} then {
+          return true
+        } else {
+          if {!$quiet} then {
+            tputs $channel [appendArgs \
+                "==== WARNING: failure loading test settings: " \
+                $error \n]
+          }
+        }
+      }
+    }
+
+    return false
+  }
+
+  proc cleanupTestSettings {} {
+    uplevel 1 {
+      unset -nocomplain exeFile wireGuardFile
+      unset -nocomplain commonConstraints validateConstraints
+
+      #########################################################################
+
+      if {[info exists setProxyApiHost]} then {
+        unset -nocomplain proxyApiHost setProxyApiHost
+      }
+
+      #########################################################################
+
+      if {[info exists setPublicApiHost]} then {
+        unset -nocomplain publicApiHost setPublicApiHost
+      }
+
+      #########################################################################
+
+      if {[info exists setInternalApiHost]} then {
+        unset -nocomplain internalApiHost setInternalApiHost
+      }
+
+      #########################################################################
+
+      if {[info exists setHeaderHost]} then {
+        unset -nocomplain headerHost setHeaderHost
+      }
+
+      #########################################################################
+
+      unset -nocomplain env(getDefaultTestLog); # NOTE: Nested Eagle shells.
+    }
+  }
+
+  package provide Chelsea.Test 1.0
+}

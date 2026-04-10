@@ -1,0 +1,5 @@
+{
+  "vm_id": "%vm_id%",
+  "commit_id": "%commit_id%",
+  "wireguard": %wireGuardConfiguration%
+}

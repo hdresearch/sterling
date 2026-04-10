@@ -1,0 +1,17 @@
+[package]
+name = "ceph-gc"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "ceph-gc"
+path = "src/main.rs"
+
+[dependencies]
+ceph = { path = "../ceph" }
+vers_pg = { path = "../vers_pg" }
+vers_config = { path = "../vers_config" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+futures = "0.3"
+anyhow = "1"
+thiserror = "2.0.18"

@@ -1,0 +1,25 @@
+[package]
+name = "chelsea_test"
+version = "0.1.0"
+edition = "2024"
+description = "Integration test framework for Chelsea"
+
+[dependencies]
+anyhow = "1.0.100"
+tokio = { version = "1.47.1", features = ["macros", "rt", "sync", "time", "process"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tempfile = "3.24.0"
+ipnet = "2.11.0"
+aws-sdk-s3 = "1.82.0"
+
+# PostgreSQL via testcontainers
+testcontainers = "0.25.0"
+testcontainers-modules = { version = "0.13.0", features = ["postgres"] }
+
+# Internal crates
+chelsea_lib = { path = "../chelsea_lib" }
+chelsea_db = { path = "../chelsea_db" }
+vers_pg = { path = "../vers_pg" }
+vers_config = { path = "../vers_config" }
+util = { path = "../util" }

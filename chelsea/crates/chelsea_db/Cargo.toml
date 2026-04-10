@@ -1,0 +1,23 @@
+[package]
+name = "chelsea_db"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1.89"
+tokio = { version = "1.47.1", features = ["sync"] }
+chelsea_lib = { path = "../chelsea_lib" }
+anyhow = "1.0.100"
+util = { path = "../util" }
+chrono = "0.4.42"
+tracing = "0.1.41"
+rusqlite = { version = "0.37.0" }
+uuid = "1.19.0"
+vers_config = { path = "../vers_config" }
+
+[features]
+
+[dev-dependencies]
+tokio = { version = "1.47.1", features = ["macros", "rt", "rt-multi-thread"] }
+tempfile = "3.10.1"
+util_test = { path = "../util_test" }

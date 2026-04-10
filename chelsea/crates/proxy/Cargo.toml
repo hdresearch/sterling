@@ -1,0 +1,55 @@
+[package]
+name = "proxy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vers_acme.path = "../vers_acme"
+hyper = { version = "1.6.0", features = ["full"] }
+tokio = { version = "1.46.1", features = ["full"] }
+http-body-util = "0.1"
+bytes = "1"
+hyper-util = { version = "0.1.16", features = ["full"]}
+pbkdf2 = "0.12.2"
+sha2 = "0.10.9"
+defguard_wireguard_rs = { version = "0.7.8" }
+bb8 = "0.9.0"
+tokio-postgres = { version = "0.7.13", features = ["runtime", "with-uuid-1", "with-chrono-0_4"]}
+bb8-postgres = "0.9.0"
+anyhow = "1.0.99"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = "1.18.0"
+short-uuid = "0.2.0"
+lru = "0.16.0"
+subtle = "2.5"
+postgres-native-tls = "0.5.2"
+native-tls = "0.2.14"
+hex = "0.4.3"
+rustls = { version = "0.23.33", features = ["aws-lc-rs"] }
+tokio-rustls = "0.26.4"
+rustls-pemfile = "2.2.0"
+rcgen = "0.14.5"
+time = "0.3"
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
+axum = { version = "0.8.6", features = ["json"] }
+tower-http = { version = "0.6.0", features = ["trace"] }
+orch_wg.path = "../orch_wg"
+workspace_build = { path = "../workspace_build" }
+dto_lib = { path = "../dto_lib" }
+chrono = "0.4.42"
+rustls-pki-types = "1.13.2"
+pem = "3.0.6"
+x509-parser = "0.18.0"
+vers_config = { path = "../vers_config" }
+
+# TODO(temporary): reqwest is used for pool manager integration, remove when permanent solution is in place
+reqwest = { version = "0.13.2", features = ["json"] }
+
+[dev-dependencies]
+tempfile = "3.8"
+tokio-test = "0.4"
+testcontainers = "0.25.0"
+testcontainers-modules = { version = "0.13.0", features = ["postgres"] }

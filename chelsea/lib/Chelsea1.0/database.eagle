@@ -1,0 +1,172 @@
+###############################################################################
+#
+# database.eagle --
+#
+###############################################################################
+
+#
+# NOTE: Use our own namespace here because even though we may not directly
+#       support namespaces ourselves, we do not want to pollute the global
+#       namespace if this script actually ends up being evaluated in Tcl.
+#
+namespace eval ::Chelsea {
+  proc getServiceDatabaseFileName {} {
+    variable chelsea_database_path
+
+    if {[info exists chelsea_database_path]} then {
+      return $chelsea_database_path
+    }
+
+    return [file join [getServiceDataDirectory] db chelsea.db]
+  }
+
+  proc getConnectionString { {readOnly true} } {
+    set result {Data Source=${fileName};}
+
+    if {$readOnly} then {
+      append result {Read Only=true;}
+    }
+
+    append result {DateTimeKind=Utc;}
+    append result {DateTimeFormat=UnixEpoch;}
+
+    return $result
+  }
+
+  proc getConnectionObject { {varName connection} } {
+    upvar 1 $varName connection
+
+    if {[info exists connection]} then {
+      if {[catch {
+        object invoke -flags +NonPublic -objectflags \
+            +NoDispose -objectname $connection -alias \
+            Interpreter.GetActive.connections Item $connection
+      } result] == 0} then {
+        return $result
+      } else {
+        error [appendArgs \
+            "failed to get object handle for database connection \"" \
+            $connection "\", error: " \n\t $result \n]
+      }
+    } else {
+      error "database connection appears to be unavailable"
+    }
+  }
+
+  proc getSQLiteBinaryFileName {} {
+    return [file join [file dirname \
+        [getShellExecutableName]] SQLite.Interop.dll]
+  }
+
+  proc openDatabase { fileName {readOnly true} {varName connection} } {
+    upvar 1 $varName connection
+
+    set connection [sql open \
+        -type SQLite [subst [getConnectionString $readOnly]]]
+
+    set object [getConnectionObject connection]
+
+    $object EnableExtensions true
+
+    $object LoadExtension \
+        [getSQLiteBinaryFileName] sqlite3_regexp_init
+
+    return ""
+  }
+
+  proc closeDatabase { {varName connection} } {
+    upvar 1 $varName connection
+
+    if {[info exists connection]} then {
+      object dispose $connection
+      sql close $connection
+      unset -nocomplain connection
+    }
+
+    return ""
+  }
+
+  proc findRow {
+          columnNames columnValues {rowsVarName rows} {notFound -1}
+          {onError ""} } {
+    if {[string length $onError] == 0} then {
+      set onError $notFound; # HACK: Treat same as "not found".
+    }
+
+    upvar 1 $rowsVarName rows
+
+    if {![info exists rows(count)]} then {
+      return $onError
+    }
+
+    set columnCount [llength $columnNames]
+
+    if {$columnCount <= 0 || \
+        $columnCount != [llength $columnValues]} then {
+      return $onError
+    }
+
+    set rowCount $rows(count)
+
+    if {$rowCount < 0} then {
+      return $onError
+    }
+
+    for {set rowIndex 1} {$rowIndex <= $rowCount} {incr rowIndex} {
+      if {![info exists rows($rowIndex)]} then {
+        continue
+      }
+
+      set row $rows($rowIndex)
+
+      for {set columnIndex 0} \
+          {$columnIndex < $columnCount} {incr columnIndex} {
+        if {[getColumnValueEx $row \
+            [lindex $columnNames $columnIndex]] ne \
+            [lindex $columnValues $columnIndex]} then {
+          break
+        }
+      }
+
+      if {$columnIndex == $columnCount} then {
+        return $rowIndex
+      }
+    }
+
+    return $notFound
+  }
+
+  proc getColumnValueEx { row column {default ""} {wrap ""} } {
+    if {[haveColumnValue $row $column]} then {
+      set result [getColumnValue $row $column $default $wrap]
+
+      if {[isNonNullObjectHandle $result] && \
+          [regexp -- {^System#Byte\[\]#\d+$} $result] && \
+          [object invoke $result Length] == 16} then {; # sizeof(Guid)
+        return [[set guid \
+            [object create -alias Guid $result]] ToString]
+      }
+
+      return $result
+    }
+
+    return $default
+  }
+
+  proc readFileAsBlob { fileName } {
+    return [appendArgs x' [object invoke Utility \
+        ToHexadecimalString [set bytes [object invoke \
+        -create System.IO.File ReadAllBytes $fileName]]] ']
+  }
+
+  proc readFileBytes { fileName } {
+    return [object invoke \
+        -create -alias System.IO.File ReadAllBytes $fileName]
+  }
+
+  proc writeFileBytes { fileName bytes } {
+    object invoke System.IO.File WriteAllBytes $fileName $bytes
+  }
+
+  package provide Chelsea.Database 1.0
+}

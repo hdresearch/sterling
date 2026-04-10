@@ -1,0 +1,61 @@
+###############################################################################
+#
+# settings.eagle --
+#
+# This file contains settings applicable to all test files in the test suite.
+#
+###############################################################################
+
+set env(getDefaultTestLog) [getTestLog]; # NOTE: Nested Eagle shells.
+
+###############################################################################
+
+if {![info exists headerHost]} then {
+  set headerHost api.vers.sh
+  set setHeaderHost true
+}
+
+###############################################################################
+
+if {![info exists internalApiHost]} then {
+  set internalApiHost http://\[fd00:fe11:deed::100\]:8111
+  set setInternalApiHost true
+}
+
+###############################################################################
+
+if {![info exists publicApiHost]} then {
+  set publicApiHost http://\[fd00:fe11:deed::ffff\]:8090
+  set setPublicApiHost true
+}
+
+###############################################################################
+
+if {![info exists proxyApiHost]} then {
+  set proxyApiHost https://204.0.0.2:443
+  set setProxyApiHost true
+}
+
+###############################################################################
+
+if {![info exists exeFile]} then {
+  set exeFile [file join [file dirname $path] result bin chelsea]
+}
+
+###############################################################################
+
+if {![info exists wireGuardFile]} then {
+  set wireGuardFile [file join [getTemporaryPath] testWireGuard.conf]
+}
+
+###############################################################################
+
+if {![info exists commonConstraints]} then {
+  set commonConstraints [list eagle testExec file_chelsea]
+}
+
+###############################################################################
+
+if {![info exists validateConstraints]} then {
+  set validateConstraints [list eagle]
+}

@@ -1,0 +1,234 @@
+###############################################################################
+#
+# value.eagle --
+#
+###############################################################################
+
+#
+# NOTE: Use our own namespace here because even though we may not directly
+#       support namespaces ourselves, we do not want to pollute the global
+#       namespace if this script actually ends up being evaluated in Tcl.
+#
+namespace eval ::Chelsea {
+  proc randomHexInteger {} {
+    if {![info exists ::no(simulatedRandomness)]} then {
+      variable chelsea_random_numbers
+      variable chelsea_random_index
+
+      if {[info exists chelsea_random_numbers] && \
+          [info exists chelsea_random_index]} then {
+        set count [llength $chelsea_random_numbers]
+        set index $chelsea_random_index
+
+        if {$index >= 0 && $index < $count} then {
+          set number [lindex $chelsea_random_numbers $index]
+          incr chelsea_random_index; # advance to next number.
+
+          if {[string is wideinteger -strict $number]} then {
+            return [format %016lx $number]
+          }
+        }
+      }
+    }
+
+    return [format %016lx [expr {random()}]]
+  }
+
+  proc randomId {} {
+    if {[info exists ::no(simulatedRandomness)]} then {
+      set result [guid new]
+    } else {
+      set result [appendArgs [randomHexInteger] [randomHexInteger]]
+
+      set result [appendArgs \
+          [string range $result 0 7] - [string range $result 8 11] - \
+          [string range $result 12 15] - [string range $result 16 19] - \
+          [string range $result 20 31]]
+    }
+
+    return $result
+  }
+
+  proc isValidPort { value } {
+    if {[string is not integer -strict $value]} then {
+      return false
+    }
+
+    if {$value < 0 || $value > 65535} then {
+      return false
+    }
+
+    return true
+  }
+
+  proc isValidClusterId { value } {; # short-uuid ==> flickrBase58
+    set pattern [appendArgs \
+        {^[123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ]} \
+        {{22}$}]
+
+    return [regexp -- $pattern $value]
+  }
+
+  proc isValidId { value } {
+    return [string is guid -strict $value]
+  }
+
+  proc isValidVirtualMachineId { value } {
+    return [isValidId $value]
+  }
+
+  proc isValidDomainId { value } {
+    return [isValidId $value]
+  }
+
+  proc isValidCommitId { value } {
+    return [isValidId $value]
+  }
+
+  proc isValidApiKeyId { value } {
+    if {[isValidId [string range $value 0 35]] && [regexp -- \
+        {^[0-9a-f]{64}$} [string range $value 36 end]]} then {
+      return true
+    } else {
+      return false
+    }
+  }
+
+  proc isValidIdentifier { value } {
+    return [regexp -nocase -- {^[A-Z][_0-9A-Z]*$} $value]
+  }
+
+  proc isValidHttpResponseCode { value {zeros false} } {
+    if {$zeros && $value eq "000"} then {
+      return true
+    }
+
+    if {[string is not integer -strict $value]} then {
+      return false
+    }
+
+    if {$value < 100 || $value > 599} then {
+      return false
+    }
+
+    return true
+  }
+
+  proc isValidFileNameOnly { value } {
+    return [regexp -- {^[\-_0-9A-Za-z]+(?:\.[\-_0-9A-Za-z]+)?$} $value]
+  }
+
+  proc isValidTimeStamp { value } {
+    if {[string is wideinteger -strict $value] && $value >= 0} then {
+      return true
+    } else {
+      return false
+    }
+  }
+
+  proc isValidOwner { value } {
+    if {[isWindows]} then {
+      set pattern [appendArgs \
+          {^S-(?:0|[1-9]\d*)-(?:0|[1-9]\d{0,14}|0x[0-9A-Fa-f]{1,12})} \
+          {(?:-(?:0|[1-9]\d{0,9})){1,15}$}]
+    } else {
+      set pattern {^[A-Za-z][\-0-9A-Za-z]*(?::[A-Za-z][\-0-9A-Za-z]*)?$}
+    }
+
+    return [regexp -- $pattern $value]
+  }
+
+  proc isValidPermissions { value } {
+    if {![isWindows] && \
+        [string is integer -strict $value] && \
+        $value >= 0 && $value <= 0o777} then {
+      return true
+    } else {
+      return false
+    }
+  }
+
+  proc verifyHttpResponseCode { response {wantResponseCode 200} } {
+    set haveResponseCode [getDictionaryValue $response responseCode]
+
+    if {![isValidHttpResponseCode $haveResponseCode]} then {
+      error [appendArgs \
+          "invalid HTTP response code: have " \
+          $haveResponseCode ", from: " $response]
+    }
+
+    if {$wantResponseCode eq "200"} then {
+      if {$haveResponseCode ne "200"} then {
+        error [appendArgs \
+            "bad HTTP response code is not OK: have " \
+            $haveResponseCode ", from: " $response]
+      }
+    } else {
+      if {$haveResponseCode ne $wantResponseCode} then {
+        error [appendArgs \
+            "mismatched HTTP response code: have " \
+            $haveResponseCode ", want " $wantResponseCode \
+            ", from: " $response]
+      }
+    }
+  }
+
+  proc normalizeSpaces { value } {
+    return [regsub -all -- {\s+} $value " "]
+  }
+
+  proc extractIdentifiers { value } {
+    return [regexp -all -inline -- {(?:^|\s)[0-9a-f]{32}(?:\s|$)} $value]
+  }
+
+  proc getHttpVerbs {} {
+    return [list \
+        CONNECT DELETE GET HEAD OPTIONS PATCH POST PUT TRACE]
+  }
+
+  proc stringIsSshPrivateKey { value } {
+    set pattern [appendArgs \
+        {-----BEGIN OPENSSH PRIVATE KEY-----} {\n} \
+        {(?:[A-Za-z0-9+/]{1,70}\n)*} \
+        {[A-Za-z0-9+/]{1,70}(?:={0,2})?} \
+        {\n?} {-----END OPENSSH PRIVATE KEY-----}]
+
+    return [regexp -line -- $pattern $value]
+  }
+
+  proc globForHexDigits { count } {
+    return [string repeat {[0-9a-f]} $count]
+  }
+
+  proc globForUniqueIdentifier {} {
+    return [appendArgs \
+        [globForHexDigits 8] - [globForHexDigits 4] - \
+        [globForHexDigits 4] - [globForHexDigits 4] - \
+        [globForHexDigits 12]]
+  }
+
+  proc getDirectoryOnly { value } {
+    if {[string is path -strict $value] && \
+        [file pathtype $value] eq "absolute"} then {
+      if {[file isdirectory $value]} then {
+        return $value
+      } elseif {[file isfile $value]} then {
+        return [file dirname $value]
+      }
+    }
+
+    error [appendArgs \
+        "cannot extract directory from value: " $value]
+  }
+
+  proc makeRelativePath { value } {
+    if {[string length $value] == 0 || \
+        [string index $value 0] ne "/"} then {
+      error [appendArgs "path \"" $value "\" is not absolute"]
+    }
+
+    return [string range $value 1 end]
+  }
+
+  package provide Chelsea.Value 1.0
+}

@@ -1,0 +1,1067 @@
+###############################################################################
+#
+# apis.eagle --
+#
+###############################################################################
+
+#
+# NOTE: Use our own namespace here because even though we may not directly
+#       support namespaces ourselves, we do not want to pollute the global
+#       namespace if this script actually ends up being evaluated in Tcl.
+#
+namespace eval ::Chelsea {
+  nproc public_version { proxy } {
+    set response [makeApiCall type public name version proxy $proxy]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_sshKey { id proxy } {
+    set response [makeApiCall type public name sshKey id $id proxy $proxy]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set port [jqRawString $stdOut .ssh_port]
+
+    if {![isValidPort $port]} then {
+      error [appendArgs "bad SSH port number: " $stdOut]
+    }
+
+    set privateKey [jqRawString $stdOut .ssh_private_key]
+
+    if {![stringIsSshPrivateKey $privateKey]} then {
+      error [appendArgs "bad SSH private key: " $stdOut]
+    }
+
+    return [list port $port privateKey $privateKey]
+  }
+
+  nproc public_newVm { json proxy } {
+    # Try the VM pool first (transparent — returns "" if pool disabled)
+    set poolId [pool_claim public]
+
+    if {[string length $poolId] > 0} then {
+      return $poolId
+    }
+
+    set response [makeApiCall \
+        type public name newVm json $json proxy $proxy parameters [list \
+        wait_boot true]]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut .vm_id]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc public_commitVm { id proxy } {
+    set response [makeApiCall type public name commitVm id $id proxy $proxy]
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut .commit_id]
+
+    if {![isValidCommitId $id]} {
+      error [appendArgs "bad commit identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc public_resumeVm { id json proxy } {
+    set response [makeApiCall \
+        type public name resumeVm id $id json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut .vm_id]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc public_branchVm { id json proxy } {
+    set response [makeApiCall \
+        type public name branchVm id $id json $json proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut .vm_id]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc public_branchByVm { id json proxy } {
+    set response [makeApiCall \
+        type public name branchByVm id $id json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut {.vms[0].vm_id}]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc public_branchByCommit { id json proxy } {
+    set response [makeApiCall \
+        type public name branchByCommit id $id json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut {.vms[0].vm_id}]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc public_vmMetadata { id proxy } {
+    set response [makeApiCall type public name vmMetadata id $id proxy $proxy]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set vmId [jqRawString $stdOut .vm_id]
+
+    if {![isValidVirtualMachineId $vmId]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $stdOut
+  }
+  nproc public_deleteVm { id proxy } {
+    set response [makeApiCall type public name deleteVm id $id proxy $proxy]
+    verifyHttpResponseCode $response
+
+    return $id
+  }
+
+  nproc public_resizeDisk { id json proxy } {
+    set response [makeApiCall \
+        type public name resizeDisk id $id json $json proxy $proxy]
+    verifyHttpResponseCode $response
+
+    return $id
+  }
+
+  nproc public_listCommits { proxy {limit ""} {offset ""} } {
+    set query [list]
+
+    if {[string length $limit] > 0} then {
+      if {![string is integer -strict $limit]} then {
+        error [appendArgs "limit must be integer: " $limit]
+      }
+
+      lappend query limit $limit
+    }
+
+    if {[string length $offset] > 0} then {
+      if {![string is integer -strict $offset]} then {
+        error [appendArgs "offset must be integer: " $offset]
+      }
+
+      lappend query offset $offset
+    }
+
+    set response [makeApiCall \
+        type public name listCommits proxy $proxy parameters $query]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_deleteCommit { id proxy } {
+    set response [makeApiCall \
+        type public name deleteCommit id $id proxy $proxy]
+
+    verifyHttpResponseCode $response 204
+
+    return $id
+  }
+
+  #############################################################################
+  # Commit Tag API Procedures
+  #############################################################################
+
+  nproc public_createTag { json proxy } {
+    set response [makeApiCall \
+        type public name createTag json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_listTags { proxy } {
+    set response [makeApiCall type public name listTags proxy $proxy]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_getTag { tag_name proxy } {
+    set response [makeApiCall \
+        type public name getTag tag_name $tag_name proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_listParentCommits { id proxy } {
+    set response [makeApiCall \
+        type public name listParentCommits id $id proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_updateTag { tag_name json proxy } {
+    set response [makeApiCall \
+        type public name updateTag tag_name $tag_name json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 204
+
+    return $tag_name
+  }
+
+  nproc public_deleteTag { tag_name proxy } {
+    set response [makeApiCall \
+        type public name deleteTag tag_name $tag_name proxy $proxy]
+
+    verifyHttpResponseCode $response 204
+
+    return $tag_name
+  }
+
+  nproc public_branchByTag { tag_name proxy {count 1} } {
+    set response [makeApiCall \
+        type public name branchByTag tag_name $tag_name proxy $proxy \
+        parameters [list count $count]]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_resumeVmByTag { json proxy } {
+    set response [makeApiCall \
+        type public name resumeVmByTag json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut .vm_id]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $id
+  }
+  #
+  # Repository API helpers
+  #
+  nproc public_createRepository { json proxy } {
+    set response [makeApiCall \
+        type public name createRepository json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_listRepositories { proxy } {
+    set response [makeApiCall \
+        type public name listRepositories proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_getRepository { repo_name proxy } {
+    set response [makeApiCall \
+        type public name getRepository repo_name $repo_name proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_deleteRepository { repo_name proxy } {
+    set response [makeApiCall \
+        type public name deleteRepository repo_name $repo_name proxy $proxy]
+
+    verifyHttpResponseCode $response 204
+
+    return $repo_name
+  }
+
+  nproc public_setRepositoryVisibility { repo_name json proxy } {
+    set response [makeApiCall \
+        type public name setRepositoryVisibility \
+        repo_name $repo_name json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 204
+
+    return $repo_name
+  }
+
+  nproc public_createRepoTag { repo_name json proxy } {
+    set response [makeApiCall \
+        type public name createRepoTag \
+        repo_name $repo_name json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_listRepoTags { repo_name proxy } {
+    set response [makeApiCall \
+        type public name listRepoTags repo_name $repo_name proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_getRepoTag { repo_name tag_name proxy } {
+    set response [makeApiCall \
+        type public name getRepoTag \
+        repo_name $repo_name tag_name $tag_name proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_updateRepoTag { repo_name tag_name json proxy } {
+    set response [makeApiCall \
+        type public name updateRepoTag \
+        repo_name $repo_name tag_name $tag_name json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 204
+
+    return $tag_name
+  }
+
+  nproc public_deleteRepoTag { repo_name tag_name proxy } {
+    set response [makeApiCall \
+        type public name deleteRepoTag \
+        repo_name $repo_name tag_name $tag_name proxy $proxy]
+
+    verifyHttpResponseCode $response 204
+
+    return $tag_name
+  }
+
+  nproc public_forkRepository { json proxy } {
+    set response [makeApiCall \
+        type public name forkRepository json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_listPublicRepositories { proxy } {
+    set response [makeApiCall \
+        type public name listPublicRepositories proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_getPublicRepository { org_name repo_name proxy } {
+    set response [makeApiCall \
+        type public name getPublicRepository \
+        org_name $org_name repo_name $repo_name proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_listPublicRepoTags { org_name repo_name proxy } {
+    set response [makeApiCall \
+        type public name listPublicRepoTags \
+        org_name $org_name repo_name $repo_name proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_getPublicRepoTag { org_name repo_name tag_name proxy } {
+    set response [makeApiCall \
+        type public name getPublicRepoTag \
+        org_name $org_name repo_name $repo_name \
+        tag_name $tag_name proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_execVm { id json proxy } {
+    set response [makeApiCall \
+        type public name execVm id $id json $json proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_execVmLogs { id proxy {parameters ""} } {
+    set response [makeApiCall \
+        type public name execVmLogs id $id proxy $proxy \
+        parameters $parameters]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_execVmStream { id json proxy } {
+    set response [makeApiCall \
+        type public name execVmStream id $id json $json proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    return $stdOut
+  }
+
+  nproc public_execVmStreamAttach { id json proxy } {
+    set response [makeApiCall \
+        type public name execVmStreamAttach id $id json $json proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    return $stdOut
+  }
+
+  nproc internal_version {} {
+    set response [makeApiCall type internal name version]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc internal_listVm {} {
+    set response [makeApiCall type internal name listVm]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set ids [jqRawString $stdOut {.vms[].vm_id}]
+
+    foreach id $ids {
+      if {![isValidVirtualMachineId $id]} then {
+        error [appendArgs "bad virtual machine identifier: " $stdOut]
+      }
+    }
+
+    return $ids
+  }
+
+  nproc internal_network { id } {
+    set response [makeApiCall type internal name network id $id]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc internal_sshKey { id } {
+    set response [makeApiCall type internal name sshKey id $id]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set port [jqRawString $stdOut .ssh_port]
+
+    if {![isValidPort $port]} then {
+      error [appendArgs "bad SSH port number: " $stdOut]
+    }
+
+    set privateKey [jqRawString $stdOut .ssh_private_key]
+
+    if {![stringIsSshPrivateKey $privateKey]} then {
+      error [appendArgs "bad SSH private key: " $stdOut]
+    }
+
+    return [list port $port privateKey $privateKey]
+  }
+
+  nproc internal_newVm { json } {
+    # Try the VM pool first (transparent — returns "" if pool disabled)
+    set poolId [pool_claim internal]
+
+    if {[string length $poolId] > 0} then {
+      return $poolId
+    }
+
+    set response [makeApiCall \
+        type internal name newVm json $json parameters [list wait_boot true]]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut .vm_id]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc internal_commitVm { id json } {
+    set response [makeApiCall type internal name commitVm id $id json $json]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut .commit_id]
+
+    if {![isValidCommitId $id]} {
+      error [appendArgs "bad commit identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc internal_resumeVm { id json } {
+    set response [makeApiCall type internal name resumeVm id $id json $json]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set id [jqRawString $stdOut .vm_id]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc internal_branchVm { id json } {
+    set response [makeApiCall type internal name branchVm id $id json $json]
+    verifyHttpResponseCode $response
+
+    set id [jqRawString $json .vm_id]
+
+    if {![isValidVirtualMachineId $id]} then {
+      error [appendArgs "bad virtual machine identifier: " $id]
+    }
+
+    return $id
+  }
+
+  nproc internal_deleteVm { id } {
+    set response [makeApiCall type internal name deleteVm id $id]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {[string length $stdOut] > 0} then {
+      error [appendArgs "expected no delete body: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc internal_resizeDisk { id json } {
+    set response [makeApiCall type internal name resizeDisk id $id json $json]
+    verifyHttpResponseCode $response
+
+    return $id
+  }
+
+  nproc internal_execVm { id json } {
+    set response [makeApiCall type internal name execVm id $id json $json]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc internal_execVmLogs { id {parameters ""} } {
+    set response [makeApiCall \
+        type internal name execVmLogs id $id parameters $parameters]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc internal_execVmStream { id json } {
+    set response [makeApiCall \
+        type internal name execVmStream id $id json $json]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    return $stdOut
+  }
+
+  nproc internal_execVmStreamAttach { id json } {
+    set response [makeApiCall \
+        type internal name execVmStreamAttach id $id json $json]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    return $stdOut
+  }
+
+  nproc internal_health {} {
+    set response [makeApiCall type internal name health]
+    verifyHttpResponseCode $response
+
+    return [getDictionaryValue $response stdOut]
+  }
+
+  nproc internal_telemetry {} {
+    set response [makeApiCall type internal name telemetry]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc internal_sleepVm { id } {
+    set response [makeApiCall type internal name sleepVm id $id]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {[string length $stdOut] > 0} then {
+      error [appendArgs "expected no sleep body: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc internal_wakeVm { id json } {
+    set response [makeApiCall type internal name wakeVm id $id json $json]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {[string length $stdOut] > 0} then {
+      error [appendArgs "expected no wake body: " $stdOut]
+    }
+
+    return $id
+  }
+
+  nproc internal_getVmState { id } {
+    set response [makeApiCall type internal name getVmState id $id]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set state [jqRawString $stdOut .state]
+
+    if {![string is alpha -strict $state]} {
+      error [appendArgs "invalid state: " $state]
+    }
+
+    return $state
+  }
+
+  nproc proxy_version {} {
+    set response [makeApiCall type proxy name version proxy true]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_createDomain { json proxy } {
+    set response [makeApiCall \
+        type public name createDomain json $json proxy $proxy]
+
+    verifyHttpResponseCode $response 201
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    set domainId [jqRawString $stdOut .domain_id]
+
+    if {![isValidDomainId $domainId]} then {
+      error [appendArgs "bad domain identifier: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_listDomains { proxy {parameters ""} } {
+    set response [makeApiCall \
+        type public name listDomains proxy $proxy parameters $parameters]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_getDomain { id proxy } {
+    if {$proxy} then {
+      global proxyApiHost
+      set baseUri $proxyApiHost
+    } else {
+      global publicApiHost
+      set baseUri $publicApiHost
+    }
+
+    global headerHost
+    set host $headerHost
+    set apiKey [extractTestApiKey]
+
+    set response [execApiCurlCommand \
+        baseUri $baseUri host $host apiKey $apiKey method GET \
+        path [appendArgs /api/v1/domains/ $id]]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_deleteDomain { id proxy } {
+    if {$proxy} then {
+      global proxyApiHost
+      set baseUri $proxyApiHost
+    } else {
+      global publicApiHost
+      set baseUri $publicApiHost
+    }
+
+    global headerHost
+    set host $headerHost
+    set apiKey [extractTestApiKey]
+
+    set response [execApiCurlCommand \
+        baseUri $baseUri host $host apiKey $apiKey method DELETE \
+        path [appendArgs /api/v1/domains/ $id]]
+
+    verifyHttpResponseCode $response
+
+    return $id
+  }
+
+  ###########################################################################
+  # Environment Variables
+  ###########################################################################
+
+  nproc public_listEnvVars { proxy } {
+    set response [makeApiCall type public name listEnvVars proxy $proxy]
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_setEnvVars { json proxy } {
+    set response [makeApiCall \
+        type public name setEnvVars json $json proxy $proxy]
+
+    verifyHttpResponseCode $response
+
+    set stdOut [getDictionaryValue $response stdOut]
+
+    if {![isValidJson $stdOut]} then {
+      error [appendArgs "bad response JSON: " $stdOut]
+    }
+
+    return $stdOut
+  }
+
+  nproc public_deleteEnvVar { key proxy } {
+    set response [makeApiCall \
+        type public name deleteEnvVar key $key proxy $proxy]
+
+    verifyHttpResponseCode $response 204
+
+    return $key
+  }
+
+  package provide Chelsea.Apis 1.0
+}

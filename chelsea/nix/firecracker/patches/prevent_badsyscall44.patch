@@ -1,0 +1,34 @@
+diff --git a/resources/seccomp/x86_64-unknown-linux-musl.json b/resources/seccomp/x86_64-unknown-linux-musl.json
+index 14f2a26ba..40924100c 100644
+--- a/resources/seccomp/x86_64-unknown-linux-musl.json
++++ b/resources/seccomp/x86_64-unknown-linux-musl.json
+@@ -28,6 +28,9 @@
+             {
+                 "syscall": "write"
+             },
++	        {
++	            "syscall": "sendto"
++	        },
+             {
+                 "syscall": "mincore"
+             },
+@@ -487,6 +490,9 @@
+             {
+                 "syscall": "write"
+             },
++	        {
++	            "syscall": "sendto"
++	        },
+             {
+                 "syscall": "close"
+             },
+@@ -761,6 +767,9 @@
+             {
+                 "syscall": "write"
+             },
++	        {
++	            "syscall": "sendto"
++	        },
+             {
+                 "syscall": "open"
+             },

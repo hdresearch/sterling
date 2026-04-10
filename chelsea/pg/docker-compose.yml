@@ -1,0 +1,15 @@
+services:
+  pg:
+    image: postgres:17.5-alpine3.22
+    environment:
+      - POSTGRES_PASSWORD=opensesame
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=vers
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

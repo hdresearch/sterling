@@ -1,0 +1,86 @@
+###############################################################################
+#
+# wireGuard.eagle --
+#
+###############################################################################
+
+#
+# NOTE: Use our own namespace here because even though we may not directly
+#       support namespaces ourselves, we do not want to pollute the global
+#       namespace if this script actually ends up being evaluated in Tcl.
+#
+namespace eval ::Chelsea {
+  proc getWireGuardConfigurationTemplateForTest {} {
+    return [string trim {
+[Interface]
+Address = %LocalPrivateIp%
+PrivateKey = %LocalPrivateKey%
+
+[Peer]
+PublicKey = %Peer1PublicKey%
+Endpoint = %Peer1PublicIp%:%Peer1PublicPort%
+AllowedIPs = %Peer1PrivateIp%/128
+
+[Peer]
+PublicKey = %Peer2PublicKey%
+Endpoint = %Peer2PublicIp%:%Peer2PublicPort%
+AllowedIPs = %Peer2PrivateIp%/128
+}]
+  }
+
+  proc setupWireGuardJsonTemplateVariables {} {
+    uplevel 1 {
+      set private_key1 [string trim [exec wg genkey]]
+      set private_key2 [string trim [exec wg genkey]]
+      set public_key1 [string trim [exec -stdin private_key1 -- wg pubkey]]
+      set public_key2 [string trim [exec -stdin private_key2 -- wg pubkey]]
+      set ipv6_address1 [randomIPv6]
+      set ipv6_address2 [randomIPv6]
+      set ipv4_address1 [randomIPv4]
+      set port1 0
+    }
+  }
+
+  proc cleanupWireGuardJsonTemplateVariables {} {
+    uplevel 1 [list \
+        unset -nocomplain private_key1 private_key2 public_key1 public_key2 \
+                          ipv6_address1 ipv6_address2 ipv4_address1 port1]
+  }
+
+  proc wgQuickUp { channel fileName } {
+    set command [eval \
+        buildExecCommand false false wg-quick [list up $fileName]]
+
+    if {[catch {
+      evalExecCommand $command
+    } result] != 0} then {
+      if {[string first "File exists" $result] == -1} then {
+        set message [appendArgs \
+            "ERROR: failed to bring up WireGuard interface: " \
+            $result \n]
+
+        tputs $channel $message; error $message
+      }
+    }
+  }
+
+  proc wgQuickDown { channel fileName } {
+    set command [eval \
+        buildExecCommand false false wg-quick [list down $fileName]]
+
+    if {[catch {
+      evalExecCommand $command
+    } result] == 0} then {
+      if {[isCleanupEnabled] && \
+          [file exists $fileName]} then {
+        catch {file delete $fileName}
+      }
+    } else {
+      tputs $channel [appendArgs \
+          "WARNING: failed to bring down WireGuard interface: " \
+          $result \n]
+    }
+  }
+
+  package provide Chelsea.WireGuard 1.0
+}

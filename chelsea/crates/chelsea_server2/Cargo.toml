@@ -1,0 +1,35 @@
+[package]
+name = "chelsea_server2"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+async-trait = "0.1.89"
+axum = { version = "0.8.6", features = ["macros", "multipart"] }
+futures-util = "0.3"
+tempfile = "3"
+ceph = { path = "../ceph" }
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.47.1", features = ["net", "process"] }
+tracing = "0.1.41"
+utoipa = { version = "5.4.0", features = ["yaml"] }
+utoipa-axum = "0.2.0"
+serde_json = "1.0.145"
+dto_lib = { path = "../dto_lib" }
+thiserror = "1.0.65"
+chelsea_lib = { path = "../chelsea_lib" }
+agent_protocol = { path = "../agent_protocol" }
+uuid = { version = "1.18.1", features = ["v4"] }
+bytes = "1"
+base64 = "0.22"
+tokio-stream = "0.1"
+defguard_wireguard_rs = "0.7.8"
+workspace_build = { path = "../workspace_build" }
+regex = "1.12.2"
+vers_config = { path = "../vers_config" }
+
+[dev-dependencies]
+tower = { version = "0.4.13", features = ["util"] }
+http-body-util = "0.1"
+tokio = { version = "1.47.1", features = ["full"] }

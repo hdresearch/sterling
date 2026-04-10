@@ -1,0 +1,192 @@
+###############################################################################
+#
+# shell.eagle --
+#
+###############################################################################
+
+#
+# NOTE: Use our own namespace here because even though we may not directly
+#       support namespaces ourselves, we do not want to pollute the global
+#       namespace if this script actually ends up being evaluated in Tcl.
+#
+namespace eval ::Chelsea {
+  proc getExecOptions { viaShell } {
+    #
+    # NOTE: These are the "standard" options that should be used when
+    #       using [exec] from the test suite.  Depending on specifics
+    #       of the underlying platform and/or environment, it may be
+    #       necessary to modify these.
+    #
+    set options [list -exitcode exitCode -stdout stdOut -stderr stdErr]
+    if {[hasRuntimeOption auditExec]} then {lappend options -debug -trace}
+
+    return $options
+  }
+
+  proc appendExecArgs { viaShell varName args } {
+    upvar 1 $varName command
+
+    set newArgs [list]
+
+    foreach arg $args {
+      set arg [string map [list \\ \\\\ \" \\\"] $arg]
+
+      if {[regexp -- {[\s\"\\]} $arg]} then {
+        lappend newArgs [appendArgs \" $arg \"]
+      } else {
+        lappend newArgs $arg
+      }
+    }
+
+    if {$viaShell} then {
+      set shellCommand [join $newArgs " "]
+      set shellCommand [string map [list ' '\\''] $shellCommand]
+      set shellCommand [appendArgs ' $shellCommand ']
+
+      lappend command [appendArgs \
+          \" $::env(SHELL) " -c " $shellCommand \"]
+    } else {
+      eval lappend command $newArgs
+    }
+  }
+
+  proc buildExecCommand { viaShell withRoot fileName args } {
+    set command [list]
+
+    lappend command testExec
+
+    if {$withRoot} then {
+      lappend command sudo
+      set args [linsert $args 0 $fileName]
+    } else {
+      lappend command $fileName
+    }
+
+    lappend command [getExecOptions $viaShell]
+    eval appendExecArgs $viaShell command $args
+
+    return $command
+  }
+
+  proc evalExecCommand { command } {
+    if {![info exists ::test_log]} then {
+      set ::test_log [getDefaultTestLog]
+      set ::set_test_log true
+    }
+
+    try {
+      return [uplevel 1 $command]
+    } finally {
+      if {[info exists ::set_test_log] && \
+          [string is true -strict $::set_test_log]} then {
+        unset -nocomplain ::test_log ::set_test_log
+      }
+    }
+  }
+
+  proc evalInDirectory { directory command } {
+    set savedPwd [pwd]
+
+    try {
+      if {[string length $directory] > 0} then {
+        cd $directory
+      }
+
+      return [uplevel 1 $command]
+    } finally {
+      if {[info exists savedPwd]} then {
+        cd $savedPwd; unset savedPwd
+      }
+    }
+  }
+
+  proc formatExecResults {} {
+    return [uplevel 1 {
+      list exitCode $exitCode \
+          stdOut [string trim $stdOut] \
+          stdErr [string trim $stdErr]
+    }]
+  }
+
+  proc getUidAndGidForUserName { userName } {
+    set pattern [appendArgs \
+        {^uid=(\d+)\(} $userName {\)\s+gid=(\d+)\(} $userName \
+        {\)(?:\s+|$)}]
+
+    set command [eval \
+        buildExecCommand false false id [list $userName]]
+
+    set savedPreviousPid [info previouspid]
+
+    try {
+      set id [evalExecCommand $command]; # NOTE: Get "id" output.
+    } finally {
+      info previouspid true $savedPreviousPid
+    }
+
+    if {![regexp -skip 1 -- $pattern $id uid gid]} then {
+      error [appendArgs \
+          "cannot get uid / gid, malformed \"id\" command output: " \
+          $id]
+    }
+
+    return [list uid $uid gid $gid]
+  }
+
+  proc getUid {} {
+    if {![info exists ::env(USER)]} then {
+      error "missing USER environment variable"
+    }
+
+    return [getDictionaryValue \
+        [getUidAndGidForUserName $::env(USER)] uid]
+  }
+
+  proc changeOwner { path userName {force false} } {
+    if {![file exists $path]} then {
+      error [appendArgs \
+          "cannot change owner, path does not exist: " \
+          $path]
+    }
+
+    if {![regexp -nocase -- {^[a-z][\-0-9a-z]*$} $userName]} then {
+      error [appendArgs \
+          "cannot change owner, user name is not valid: " \
+          $userName]
+    }
+
+    if {!$force} then {
+      set same true
+
+      set ids [getUidAndGidForUserName $userName]; # <name> ==> <id>
+      set uid [getDictionaryValue $ids uid]
+      set gid [getDictionaryValue $ids gid]
+
+      foreach subPath [findFilesRecursive [file join $path *]] {
+        #
+        # BUGBUG: Why is this [catch] necessary here?  Are the
+        #         files somehow being modified at this point?
+        #         Perhaps by an external process?
+        #
+        unset -nocomplain stat; catch {file stat $subPath stat}
+
+        if {![info exists stat] || \
+            $stat(uid) != $uid || $stat(gid) != $gid} then {
+          set same false; break
+        }
+      }
+
+      if {$same} then {
+        return ""; # NOTE: Owners are already correct, do nothing.
+      }
+    }
+
+    set command [eval \
+        buildExecCommand false true chown -R -- [list [appendArgs \
+        $userName : $userName]] [list $path]]
+
+    return [evalInDirectory [getDirectoryOnly $path] $command]
+  }
+
+  package provide Chelsea.Shell 1.0
+}

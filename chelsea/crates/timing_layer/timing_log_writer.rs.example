@@ -1,0 +1,83 @@
+use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::sync::Mutex;
+use timing_layer::{PartialTimingEvent, TimingEvent, TimingWriter};
+
+pub struct LogFileWriter {
+    file: Mutex<std::fs::File>,
+    pending_records: Mutex<HashMap<u64, TimingEvent>>,
+}
+
+impl LogFileWriter {
+    pub fn new(path: &str) -> std::io::Result<Self> {
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
+
+        Ok(Self {
+            file: Mutex::new(file),
+            pending_records: Mutex::new(HashMap::new()),
+        })
+    }
+}
+impl TimingWriter for LogFileWriter {
+    fn insert_event(&self, event: TimingEvent) {
+        self.pending_records
+            .lock()
+            .unwrap()
+            .insert(event.span_id, event);
+    }
+
+    fn update_event(
+        &self,
+        span_id: u64,
+        partial: PartialTimingEvent,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut pending = self.pending_records.lock().unwrap();
+
+        if let Some(event) = pending.get_mut(&span_id) {
+            if let Some(span_name) = partial.span_name {
+                event.span_name = span_name;
+            }
+            if let Some(span_fullname) = partial.span_fullname {
+                event.span_fullname = span_fullname;
+            }
+            if let Some(return_value) = partial.return_value {
+                event.return_value = return_value;
+            }
+            if let Some(elapsed_micros) = partial.elapsed_micros {
+                event.elapsed_micros = elapsed_micros;
+            }
+            if let Some(is_error) = partial.is_error {
+                event.is_error = is_error;
+            }
+            Ok(())
+        } else {
+            Err(format!("No pending event found for span_id: {}", span_id).into())
+        }
+    }
+
+    fn finalize_record(
+        &self,
+        span_id: u64,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Short critical section
+        let record = {
+            let mut pending = self.pending_records.lock().unwrap();
+            pending.remove(&span_id)
+        }; // Lock released here
+
+        // File I/O
+        if let Some(record) = record {
+            let mut file = self.file.lock().unwrap();
+            writeln!(file, "{}", serde_json::to_string(&record)?)?;
+            file.flush()?;
+        } else {
+            return Err(format!("No pending record found for span_id: {}", span_id).into());
+        }
+
+        Ok(())
+    }
+    fn remove_event(&self, span_id: u64) {
+        self.pending_records.lock().unwrap().remove(&span_id);
+    }
+}

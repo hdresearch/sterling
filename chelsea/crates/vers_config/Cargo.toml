@@ -1,0 +1,12 @@
+[package]
+name = "vers_config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ipnet = { version = "2.11.0", features = ["serde"] }
+serde = "1.0.228"
+thiserror = "2.0.17"
+util = { path = "../util" }
+utoipa = { version = "5.4.0", features = ["uuid"] }
+uuid = { version = "1.19.0", features = ["serde"] }

@@ -1,0 +1,4 @@
+{
+  "vm_id": "%vm_id%",
+  "wireguard": %wireGuardConfiguration%
+}

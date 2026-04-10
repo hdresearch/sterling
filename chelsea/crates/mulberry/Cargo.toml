@@ -1,0 +1,14 @@
+[package]
+name = "mulberry"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sysinfo = "0.38.0"
+thiserror = "2.0.18"
+tokio = { version = "1.49.0", features = ["sync", "time"] }
+tracing = "0.1.44"
+vers_config = { path = "../vers_config" }
+chelsea_lib = { path = "../chelsea_lib" }
+uuid = "1.20.0"
+alerting = { path = "../alerting" }

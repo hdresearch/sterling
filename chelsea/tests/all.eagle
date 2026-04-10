@@ -1,0 +1,82 @@
+###############################################################################
+#
+# all.eagle --
+#
+# This file contains a top-level script to run all of the tests.
+# Execute it by invoking "source all.eagle".
+#
+###############################################################################
+
+package require Eagle
+package require Eagle.Test
+runTestPrologue
+
+###############################################################################
+
+package require Chelsea.Meta
+
+###############################################################################
+
+maybeCreateTemporaryDirectory
+maybeUseTemporaryDirectory
+
+###############################################################################
+
+unset -nocomplain error
+
+set no(prologue.eagle) true
+set no(epilogue.eagle) true
+
+#
+# NOTE: Run the local test prologue, if any.
+#
+if {[file exists [file join $path prologue.eagle]]} then {
+  source [file join $path prologue.eagle]
+}
+
+#
+# NOTE: Load test settings early so pool_init can access API hosts.
+#
+maybeLoadTestSettings
+
+#
+# NOTE: Initialize the VM pool if CHELSEA_VM_POOL is set.
+#       This pre-boots VMs in the background to reduce test latency.
+#
+pool_init
+
+#
+# NOTE: Run all the unit tests.
+#
+set test_time [time {
+  runAllTests $test_channel $path \
+      [getTestFiles [list $path test_extra_paths] \
+      $test_flags(-file) $test_flags(-notFile)] \
+      [list [file tail [info script]] \
+      *.tcl epilogue.eagle prologue.eagle settings.eagle] \
+      $test_flags(-startFile) $test_flags(-stopFile)
+}]
+
+#
+# NOTE: Drain the VM pool (delete unclaimed VMs, kill background boots).
+#
+pool_drain
+
+#
+# NOTE: Run the local test epilogue, if any.
+#
+if {[file exists [file join $path epilogue.eagle]]} then {
+  source [file join $path epilogue.eagle]
+}
+
+tputs $test_channel [appendArgs "---- all tests completed in " $test_time \n]
+unset test_time
+
+unset no(epilogue.eagle)
+unset no(prologue.eagle)
+
+if {[array size no] == 0} then {unset no}
+
+###############################################################################
+
+runTestEpilogue

@@ -1,0 +1,49 @@
+-- migrate:up
+CREATE ROLE vers_landing
+    LOGIN
+    NOSUPERUSER
+    NOCREATEDB
+    NOCREATEROLE
+    NOINHERIT
+    NOREPLICATION
+    NOBYPASSRLS;
+
+GRANT CONNECT ON DATABASE vers TO vers_landing;
+
+CREATE SCHEMA IF NOT EXISTS vers_landing;
+
+GRANT USAGE, CREATE ON SCHEMA vers_landing TO vers_landing;
+
+GRANT ALL PRIVILEGES ON ALL TABLES     IN SCHEMA vers_landing TO vers_landing;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES  IN SCHEMA vers_landing TO vers_landing;
+GRANT ALL PRIVILEGES ON ALL FUNCTIONS  IN SCHEMA vers_landing TO vers_landing;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA vers_landing
+    GRANT ALL ON TABLES TO vers_landing;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA vers_landing
+    GRANT ALL ON SEQUENCES TO vers_landing;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA vers_landing
+    GRANT ALL ON FUNCTIONS TO vers_landing;
+
+GRANT USAGE ON SCHEMA public TO vers_landing;
+
+GRANT SELECT ON ALL TABLES     IN SCHEMA public TO vers_landing;
+GRANT SELECT ON ALL SEQUENCES  IN SCHEMA public TO vers_landing;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO vers_landing;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT ON TABLES TO vers_landing;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT ON SEQUENCES TO vers_landing;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT EXECUTE ON FUNCTIONS TO vers_landing;
+
+ALTER ROLE vers_landing
+    SET search_path = vers_landing, public;
+
+-- migrate:down

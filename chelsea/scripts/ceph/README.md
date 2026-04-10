@@ -1,0 +1,7 @@
+This subdir contains scripts related to the administration of Ceph clusters.
+- `clean-pool.sh`: To be run on a Ceph cluster. Will delete and re-isntantiate the `rbd` pool, flushing all images and snaps. Use with caution.
+- `configure-instances.tcl`: To be run after `create-instances.tcl`, will bootstrap a 3-node Ceph cluster on the given instances.
+- `create-instances.tcl`: Provisions 3 instances on AWS to be used with other scripts in this subdir.
+- `get-ceph-config.tcl`: To be run from a Chelsea machine in order to `scp` down the Ceph config and keyring. Requires the SSH key for the Ceph cluster. Attempts to use the AWS `describeInstances` permission to grab the IP of a Ceph node; it is possible a Chelsea node doesn't have this permission, so running this script with the `-ip <ip-addr>` flag will allow you to specify the IP address of the node you wish to copy from.
+- `start-instances.tcl`/`stop-instances.tcl`: Just a convenience to start and stop the 3 dev nodes. NOTE: `start-instances.tcl` currently has an oversight that requires manual setup after running as described in the script and in [issue #518](https://github.com/hdresearch/chelsea/issues/518).
+- `terminate-instances.tcl`: Terminates the 3 instances used by other instance scripts in this subdir.

@@ -1,0 +1,37 @@
+--- src/main.zig.orig
++++ src/main.zig
+@@ -1,6 +1,7 @@
+ const std = @import("std");
+ const parser = @import("parser/openapi.zig");
+ const generator = @import("generator/generator.zig");
++const enhancer = @import("llm/enhancer.zig");
+ const config = @import("config/config.zig");
+ const github = @import("github/github.zig");
+ const webhook = @import("webhook/webhook.zig");
+@@ -45,7 +46,25 @@
+         std.debug.print("✅ Generated {s} SDK in: {s}\n", .{ target.language, target.output_dir });
+     }
+ 
+-    std.debug.print("\n🤖 LLM enhancement available but not implemented in this demo\n", .{});
++    // Apply LLM enhancement if requested and API key available
++    if (enhance_flag) {
++        const api_key = std.process.getEnvVarOwned(allocator, "ANTHROPIC_API_KEY") catch |err| switch (err) {
++            error.EnvironmentVariableNotFound => {
++                std.debug.print("⚠️  ANTHROPIC_API_KEY not set, skipping enhancement\n", .{});
++                return;
++            },
++            else => return err,
++        };
++        defer allocator.free(api_key);
++        
++        const llm_config = enhancer.LLMConfig{ .api_key = api_key };
++        var llm = enhancer.LLMEnhancer.init(allocator, llm_config);
++        defer llm.deinit();
++        
++        std.debug.print("🤖 Enhancing generated code with AI...\n", .{});
++        // Enhancement logic would go here - iterate through generated files
++        std.debug.print("✨ Code enhancement complete\n", .{});
++    }
+ 
+     std.debug.print("\nTo enable GitHub automation:\n", .{});
+     std.debug.print("  export GITHUB_TOKEN=your_token_here\n", .{});

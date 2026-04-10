@@ -1,0 +1,1 @@
+The purpose of this directory is to collect information that may be helpful when developing tests for our requirements. In the course of implementing new features, testing infrastructure may lag behind. In such cases, I often write manual tests that go undocumented. Rather than do that, I'd like to collect them moving forward.

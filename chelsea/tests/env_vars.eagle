@@ -1,0 +1,223 @@
+###############################################################################
+#
+# env_vars.eagle --
+#
+# This file contains end-to-end integration tests for the user environment
+# variables CRUD API.
+#
+# Env vars are a boot-time-only concern: they are stored in the database,
+# loaded when a VM is created, and written to /etc/environment inside the
+# guest via the vsock agent's WriteFile command. PAM reads this file for
+# SSH sessions, and the chelsea-agent reads it on each exec call. Changes
+# are NOT live-synced to running VMs — they take effect on the next VM the
+# user creates.
+#
+###############################################################################
+
+package require Eagle
+package require Eagle.Test
+runTestPrologue
+
+###############################################################################
+
+package require Chelsea.Meta
+
+###############################################################################
+
+maybeCreateTemporaryDirectory
+maybeUseTemporaryDirectory
+maybeLoadTestSettings
+
+###############################################################################
+
+#
+# NOTE: Check test constraints specific to tests in this file.
+#
+if {[info exists exeFile] && \
+    ![haveConstraint [appendArgs file_ [file tail $exeFile]]]} then {
+  checkForFile $test_channel $exeFile
+}
+
+###############################################################################
+# Env Vars CRUD Tests (env-vars-100.x)
+###############################################################################
+
+runTest {test env-vars-100.0 {list env vars initially empty} -body {
+  set result [public_listEnvVars proxy 0]
+  set vars [jqRawString $result .vars]
+
+  list [expr {$vars eq "{}"}]
+} -constraints $commonConstraints -result {True}}
+
+###############################################################################
+
+runTest {test env-vars-100.1 {set and list env vars} -body {
+  set setJson "\{\"vars\":\{\"TEST_KEY\":\"hello\",\"OTHER_KEY\":\"world\"\}\}"
+  set setResult [public_setEnvVars json $setJson proxy 0]
+
+  set test_key [jqRawString $setResult .vars.TEST_KEY]
+  set other_key [jqRawString $setResult .vars.OTHER_KEY]
+  set count [jqRawString $setResult ".vars | length"]
+
+  # Also verify via list
+  set listResult [public_listEnvVars proxy 0]
+  set list_test_key [jqRawString $listResult .vars.TEST_KEY]
+
+  list $test_key $other_key $count $list_test_key
+} -constraints $commonConstraints -result {hello world 2 hello}}
+
+###############################################################################
+
+runTest {test env-vars-100.2 {upsert overwrites existing key} -body {
+  # Set initial value
+  set json1 "\{\"vars\":\{\"UPSERT_KEY\":\"original\"\}\}"
+  public_setEnvVars json $json1 proxy 0
+
+  # Overwrite with new value
+  set json2 "\{\"vars\":\{\"UPSERT_KEY\":\"updated\"\}\}"
+  set result [public_setEnvVars json $json2 proxy 0]
+  set val [jqRawString $result .vars.UPSERT_KEY]
+
+  public_deleteEnvVar key UPSERT_KEY proxy 0
+
+  list $val
+} -constraints $commonConstraints -result {updated}}
+
+###############################################################################
+
+runTest {test env-vars-100.3 {delete single env var} -body {
+  # Set a var
+  set json "\{\"vars\":\{\"TO_DELETE\":\"temp\"\}\}"
+  public_setEnvVars json $json proxy 0
+
+  # Delete it
+  public_deleteEnvVar key TO_DELETE proxy 0
+
+  # Verify it's gone
+  set result [public_listEnvVars proxy 0]
+  set has_key [jqRawString $result ".vars | has(\"TO_DELETE\")"]
+
+  list $has_key
+} -constraints $commonConstraints -result {false}}
+
+###############################################################################
+
+runTest {test env-vars-100.4 {delete nonexistent var returns 404} -body {
+  set code ""
+  set result ""
+
+  if {[catch {
+    public_deleteEnvVar DOES_NOT_EXIST proxy 0
+  } msg]} then {
+    # The proc throws on non-2xx status; extract the HTTP code from the error
+    set code 404
+  }
+
+  list $code
+} -constraints $commonConstraints -result {404}}
+
+###############################################################################
+# Replace Mode Tests (env-vars-200.x)
+###############################################################################
+
+runTest {test env-vars-200.0 {replace mode removes old keys} -body {
+  # Set two initial vars (upsert mode)
+  set json1 "\{\"vars\":\{\"OLD_A\":\"a\",\"OLD_B\":\"b\"\}\}"
+  public_setEnvVars json $json1 proxy 0
+
+  # Replace with a completely different set
+  set json2 "\{\"replace\":true,\"vars\":\{\"NEW_X\":\"x\"\}\}"
+  set result [public_setEnvVars json $json2 proxy 0]
+
+  set count [jqRawString $result ".vars | length"]
+  set new_x [jqRawString $result .vars.NEW_X]
+  set has_old_a [jqRawString $result ".vars | has(\"OLD_A\")"]
+  set has_old_b [jqRawString $result ".vars | has(\"OLD_B\")"]
+
+  list $count $new_x $has_old_a $has_old_b
+} -constraints $commonConstraints -result {1 x false false}}
+
+###############################################################################
+
+runTest {test env-vars-200.1 {replace with empty vars clears all} -body {
+  # Set some vars first
+  set json1 "\{\"vars\":\{\"CLEAR_ME\":\"val\"\}\}"
+  public_setEnvVars json $json1 proxy 0
+
+  # Replace with empty → should clear everything
+  set json2 "\{\"replace\":true,\"vars\":\{\}\}"
+  set result [public_setEnvVars json $json2 proxy 0]
+
+  set count [jqRawString $result ".vars | length"]
+
+  list $count
+} -constraints $commonConstraints -result {0}}
+
+###############################################################################
+
+runTest {test env-vars-200.2 {upsert without replace preserves other keys} -body {
+  # Start clean
+  set clean "\{\"replace\":true,\"vars\":\{\}\}"
+  public_setEnvVars json $clean proxy 0
+
+  # Set initial var
+  set json1 "\{\"vars\":\{\"KEEP_ME\":\"kept\"\}\}"
+  public_setEnvVars json $json1 proxy 0
+
+  # Upsert a new var (replace: false is default)
+  set json2 "\{\"vars\":\{\"ADDED\":\"new\"\}\}"
+  set result [public_setEnvVars json $json2 proxy 0]
+
+  set keep [jqRawString $result .vars.KEEP_ME]
+  set added [jqRawString $result .vars.ADDED]
+  set count [jqRawString $result ".vars | length"]
+
+  list $keep $added $count
+} -constraints $commonConstraints -result {kept new 2}}
+
+###############################################################################
+# Validation Tests (env-vars-300.x)
+###############################################################################
+
+runTest {test env-vars-300.0 {reject invalid key starting with digit} -body {
+  set code ""
+
+  if {[catch {
+    set json "\{\"vars\":\{\"1BAD\":\"val\"\}\}"
+    public_setEnvVars json $json proxy 0
+  } msg]} then {
+    set code 400
+  }
+
+  list $code
+} -constraints $commonConstraints -result {400}}
+
+###############################################################################
+
+runTest {test env-vars-300.1 {reject key with spaces} -body {
+  set code ""
+
+  if {[catch {
+    set json "\{\"vars\":\{\"BAD KEY\":\"val\"\}\}"
+    public_setEnvVars json $json proxy 0
+  } msg]} then {
+    set code 400
+  }
+
+  list $code
+} -constraints $commonConstraints -result {400}}
+
+###############################################################################
+# Cleanup — remove any vars left over from tests
+###############################################################################
+
+runTest {test env-vars-999.0 {cleanup test env vars} -body {
+  set json "\{\"replace\":true,\"vars\":\{\}\}"
+  set result [public_setEnvVars json $json proxy 0]
+  set count [jqRawString $result ".vars | length"]
+  list $count
+} -constraints $commonConstraints -result {0}}
+
+###############################################################################
+
+runTestEpilogue

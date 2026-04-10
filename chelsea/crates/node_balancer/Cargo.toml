@@ -1,0 +1,13 @@
+[package]
+name = "node_balancer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.9"
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+test-case = "3"

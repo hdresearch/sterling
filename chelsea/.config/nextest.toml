@@ -1,0 +1,9 @@
+[profile.default]
+# Limit test threads to avoid overwhelming Ceph cluster
+# Each test creates its own Ceph connection
+test-threads = 4
+
+# Static slices (e.g. PRICING table in llm_proxy::spend) and process-lifetime
+# allocations are flagged by nextest's leak detector. These are intentional —
+# statics are never freed.
+leak-timeout = "100ms"

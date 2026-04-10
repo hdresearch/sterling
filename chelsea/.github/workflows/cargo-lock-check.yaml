@@ -1,0 +1,34 @@
+name: Cargo.lock Check
+
+on:
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '**/Cargo.toml'
+
+jobs:
+  check-lockfile:
+    runs-on: vers-ci2
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Check if Cargo.lock is in sync
+        run: /home/ubuntu/.cargo/bin/cargo check --locked
+        continue-on-error: true
+        id: lock_check
+
+      - name: Regenerate Cargo.lock if needed
+        if: steps.lock_check.outcome == 'failure'
+        run: |
+          /home/ubuntu/.cargo/bin/cargo update --workspace
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "chore: regenerate Cargo.lock"
+          git push
