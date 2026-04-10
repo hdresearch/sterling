@@ -6,3 +6,7 @@ generated/
 *.tmp
 .zig-cache/
 zig-out/
+.zig-cache/
+zig-out/
+generated/
+test-openapi.yaml
