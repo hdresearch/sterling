@@ -1,2 +1,6 @@
-.zig-cache/\ngenerated/\nzig-out/
+.zig-cache/
+zig-out/
 generated/
+.env
+*.log
+*.tmp
