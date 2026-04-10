@@ -1,7 +1,7 @@
 const std = @import("std");
-const parser = @import("openapi");
-const config = @import("config");
-const sdk_gen = @import("sdk_gen");
+const parser = @import("parser/openapi.zig");
+const config = @import("config/config.zig");
+const sdk_gen = @import("generator/sdk.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -31,6 +31,7 @@ pub fn main() !void {
     } else if (std.mem.eql(u8, command, "init")) {
         try handleInit(allocator);
     } else {
+        std.debug.print("Unknown command: {s}\n", .{command});
         printUsage();
     }
 }
@@ -45,16 +46,13 @@ fn printUsage() void {
     std.debug.print("\nEnvironment Variables:\n", .{});
     std.debug.print("  ANTHROPIC_API_KEY               # For LLM enhancement\n", .{});
     std.debug.print("  GITHUB_TOKEN                    # For GitHub automation\n", .{});
+    std.debug.print("\n", .{});
 }
 
-fn handleGenerate(raw_allocator: std.mem.Allocator, args: [][:0]u8) !void {
-    var arena = std.heap.ArenaAllocator.init(raw_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-    
+fn handleGenerate(allocator: std.mem.Allocator, args: [][]const u8) !void {
     var spec_file: ?[]const u8 = null;
     var config_file: ?[]const u8 = null;
-    var enable_llm = false;
+    var enhance = false;
 
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -65,58 +63,77 @@ fn handleGenerate(raw_allocator: std.mem.Allocator, args: [][:0]u8) !void {
             config_file = args[i + 1];
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--enhance")) {
-            enable_llm = true;
+            enhance = true;
         }
     }
 
-    if (spec_file == null) {
-        std.debug.print("Error: --spec <openapi.yaml> is required\n", .{});
-        return;
-    }
-
-    if (config_file == null) {
-        std.debug.print("Error: --config <sterling.toml> is required\n", .{});
+    if (spec_file == null or config_file == null) {
+        std.debug.print("Error: --spec and --config are required\n", .{});
+        printUsage();
         return;
     }
 
     std.debug.print("Generating SDKs...\n", .{});
     std.debug.print("  OpenAPI Spec: {s}\n", .{spec_file.?});
     std.debug.print("  Config: {s}\n", .{config_file.?});
-    if (enable_llm) {
+    if (enhance) {
         std.debug.print("  LLM Enhancement: Enabled\n", .{});
     }
 
-    const spec_content = std.fs.cwd().readFileAlloc(allocator, spec_file.?, 1024 * 1024) catch |err| {
-        std.debug.print("Error reading spec file: {}\n", .{err});
-        return;
-    };
-
-    const spec = parser.parseOpenAPI(allocator, spec_content) catch |err| {
-        std.debug.print("Error parsing OpenAPI spec: {}\n", .{err});
-        return;
-    };
-
-    const cfg = config.loadConfig(allocator, config_file.?) catch |err| {
+    // Load configuration
+    const cfg = config.loadConfigFile(allocator, config_file.?) catch |err| {
         std.debug.print("Error loading config: {}\n", .{err});
         return;
     };
+    defer cfg.deinit();
 
-    var sdk_generator = sdk_gen.SDKGenerator.init(allocator, spec, cfg);
-    sdk_generator.generateAll() catch |err| {
-        std.debug.print("Error generating SDKs: {}\n", .{err});
+    // Parse OpenAPI spec
+    const spec = parser.parseOpenAPIFile(allocator, spec_file.?) catch |err| {
+        std.debug.print("Error parsing OpenAPI spec: {}\n", .{err});
         return;
     };
+    defer spec.deinit();
 
-    if (enable_llm) {
-        std.debug.print("\n🤖 LLM enhancement available but not implemented in this demo\n", .{});
-        std.debug.print("Set ANTHROPIC_API_KEY to enable LLM features\n", .{});
+    // Generate SDKs for each enabled language
+    if (cfg.languages.rust) {
+        try generateLanguageSDK(allocator, "rust", spec, cfg, enhance);
+    }
+    if (cfg.languages.go) {
+        try generateLanguageSDK(allocator, "go", spec, cfg, enhance);
+    }
+    if (cfg.languages.typescript) {
+        try generateLanguageSDK(allocator, "typescript", spec, cfg, enhance);
+    }
+    if (cfg.languages.python) {
+        try generateLanguageSDK(allocator, "python", spec, cfg, enhance);
+    }
+    if (cfg.languages.zig) {
+        try generateLanguageSDK(allocator, "zig", spec, cfg, enhance);
     }
 
     std.debug.print("\n✅ SDK generation completed successfully!\n", .{});
 }
 
+fn generateLanguageSDK(allocator: std.mem.Allocator, language: []const u8, spec: anytype, cfg: anytype, enhance: bool) !void {
+    const output_dir = try std.fmt.allocPrint(allocator, "./generated/{s}", .{language});
+    defer allocator.free(output_dir);
+
+    std.debug.print("Generating {s} SDK to {s}\n", .{ language, output_dir });
+
+    // Create output directory
+    std.fs.cwd().makeDir(output_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+
+    // Generate SDK using the sdk_gen module
+    try sdk_gen.generateSDK(allocator, language, spec, cfg, output_dir, enhance);
+
+    std.debug.print("Generated {s} SDK at {s}\n", .{ std.fmt.titleCase(language), output_dir });
+}
+
 fn handleInit(allocator: std.mem.Allocator) !void {
-    const config_content =
+    const example_config = 
         \\# Sterling SDK Generator Configuration
         \\
         \\[project]
@@ -124,61 +141,30 @@ fn handleInit(allocator: std.mem.Allocator) !void {
         \\version = "1.0.0"
         \\description = "My API SDK"
         \\
-        \\[targets.typescript]
-        \\language = "typescript"
-        \\repository = "https://github.com/your-org/typescript-sdk"
-        \\output_dir = "./generated/typescript"
-        \\branch = "main"
+        \\[languages]
+        \\typescript = true
+        \\rust = true
+        \\python = true
+        \\go = true
+        \\zig = false
         \\
-        \\[targets.rust]
-        \\language = "rust"
-        \\repository = "https://github.com/your-org/rust-sdk"
-        \\output_dir = "./generated/rust"
-        \\branch = "main"
+        \\[output]
+        \\directory = "./generated"
         \\
-        \\[targets.python]
-        \\language = "python"
-        \\repository = "https://github.com/your-org/python-sdk"
-        \\output_dir = "./generated/python"
-        \\branch = "main"
-        \\
-        \\[targets.go]
-        \\language = "go"
-        \\repository = "https://github.com/your-org/go-sdk"
-        \\output_dir = "./generated/go"
-        \\branch = "main"
+        \\[github]
+        \\organization = "my-org"
+        \\create_repos = false
+        \\auto_publish = false
         \\
         \\[llm]
         \\provider = "anthropic"
-        \\api_key = "${ANTHROPIC_API_KEY}"
         \\model = "claude-3-5-sonnet-20241022"
-        \\
-        \\[github]
-        \\token = "${GITHUB_TOKEN}"
-        \\org = "your-org"
-        \\
-        \\[output.docs]
-        \\format = "mintlify"
-        \\output_dir = "./generated/docs"
-        \\
+        \\enhance_code = false
     ;
 
-    const file = std.fs.cwd().createFile("sterling.toml", .{}) catch |err| switch (err) {
-        error.PathAlreadyExists => {
-            std.debug.print("sterling.toml already exists\n", .{});
-            return;
-        },
-        else => return err,
-    };
-    defer file.close();
-
-    try file.writeAll(config_content);
-    std.debug.print("Created sterling.toml configuration file\n", .{});
-    std.debug.print("Edit the file to configure your target repositories and settings\n", .{});
-    std.debug.print("\nTo enable LLM enhancement:\n", .{});
-    std.debug.print("  export ANTHROPIC_API_KEY=your_key_here\n", .{});
-    std.debug.print("\nTo enable GitHub automation:\n", .{});
-    std.debug.print("  export GITHUB_TOKEN=your_token_here\n", .{});
+    try std.fs.cwd().writeFile("sterling.toml", example_config);
+    std.debug.print("Created sterling.toml with example configuration\n", .{});
+    std.debug.print("Edit the file to customize for your project\n", .{});
 
     _ = allocator;
 }
