@@ -1,14 +1,1 @@
-.zig-cache/
-zig-out/
-generated/
-sterling/
-
-# Build artifacts
-.zig-cache/
-zig-out/
-generated/
-sterling/
-# Generated artifacts
-generated/
-zig-out/
-.zig-cache/
+.zig-cache/\ngenerated/\nzig-out/

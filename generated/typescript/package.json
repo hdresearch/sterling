@@ -1,0 +1,12 @@
+{
+  "name": "petstore-sdk",
+  "version": "1.0.0",
+  "description": "SDK for Pet Store API",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "license": "MIT"
+}

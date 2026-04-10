@@ -1,0 +1,10 @@
+[project]
+name = "petstore_sdk"
+version = "1.0.0"
+description = "SDK for Pet Store API"
+requires-python = ">=3.10"
+dependencies = ["httpx>=0.24"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
