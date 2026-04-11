@@ -1,230 +1,125 @@
-# Sterling - OpenAPI SDK Generator
+# Sterling
 
-Sterling is a powerful, open-source OpenAPI SDK generator written in Zig that creates production-ready SDKs across multiple programming languages. It's designed as a modern alternative to commercial solutions like Stainless, with AI-powered code enhancement and comprehensive language support.
+Open-source OpenAPI SDK generator written in Zig. Parses an OpenAPI 3.1 spec and generates typed HTTP client SDKs in TypeScript, Rust, Python, and Go.
 
-## 🚀 Supported Languages
+Built as an alternative to [Stainless](https://stainlessapi.com/).
 
-Sterling currently generates high-quality SDKs for **5 programming languages**:
-
-| Language | Status | HTTP Client | Type System | Package Manager |
-|----------|--------|-------------|-------------|-----------------|
-| **TypeScript** | ✅ Production Ready | fetch API | Full TypeScript types | npm/yarn/pnpm |
-| **Rust** | ✅ Production Ready | reqwest | serde models | Cargo/crates.io |
-| **Python** | ✅ Production Ready | httpx/requests | Pydantic models | pip/PyPI |
-| **Go** | ✅ Production Ready | net/http | struct types | Go modules |
-| **Zig** | ✅ Production Ready | std.http | comptime types | Zig package manager |
-
-## 🎯 Core Features
-
-## 📚 Documentation
-
-- **[Setup Guide](docs/GITHUB_SETUP_INSTRUCTIONS.md)** - Comprehensive installation and configuration guide
-- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Essential commands and configuration templates
-- **[Documentation Index](docs/README.md)** - Complete documentation overview
-- **[Examples](examples/)** - Sample configurations and OpenAPI specifications
-
-### Multi-Language SDK Generation
-- **Complete OpenAPI 3.0 support** - Full specification compliance
-- **Type-safe code generation** - Strong typing across all target languages
-- **Async/await patterns** - Modern asynchronous programming support
-- **Authentication handling** - API keys, OAuth, custom auth schemes
-- **Error handling & retries** - Robust error management with configurable retry logic
-- **Request/response validation** - Runtime validation against OpenAPI schemas
-
-### 🤖 AI-Powered Enhancement
-- **LLM integration** with Claude 3.5 Sonnet for code improvement
-- **Intelligent error fixing** - AI-powered debugging and optimization
-- **Code quality enhancement** - Automatic style and pattern improvements
-- **Documentation generation** - AI-enhanced API documentation
-
-### 📦 Package Management & Distribution
-- **Automatic repository creation** - GitHub integration for SDK repositories
-- **Package publishing** - Automated publishing to language-specific registries
-- **Version management** - Semantic versioning and release automation
-- **Documentation sites** - Mintlify-powered documentation generation
-
-## 🚀 Quick Start
-
-### 1. Installation
+## Quick start
 
 ```bash
-# Build from source (requires Zig 0.12+)
-git clone https://github.com/your-org/sterling
-cd sterling
-zig build -Doptimize=ReleaseFast
+# Build (requires Zig 0.15.2+)
+zig build
 
-# Or download pre-built binary
-curl -L https://github.com/your-org/sterling/releases/latest/download/sterling-linux-x64 -o sterling
-chmod +x sterling
+# Generate SDKs from an OpenAPI spec
+./zig-out/bin/sterling generate \
+  --spec openapi.json \
+  --config sterling.toml
+
+# With LLM enhancement (optional)
+ANTHROPIC_API_KEY=sk-... ./zig-out/bin/sterling generate \
+  --spec openapi.json \
+  --config sterling.toml \
+  --enhance
 ```
 
-### 2. Configuration
-
-Create a `sterling.toml` configuration file:
+## Configuration
 
 ```toml
+# sterling.toml
 [project]
-name = "my-api"
-version = "1.0.0"
-description = "My API SDK"
+name = "chelsea"
+version = "0.1.0"
 
-# Generate TypeScript SDK
-[targets.typescript]
+[[targets]]
 language = "typescript"
-repository = "https://github.com/my-org/typescript-sdk"
 output_dir = "./generated/typescript"
-package_name = "@my-org/api-sdk"
 
-# Generate Rust SDK
-[targets.rust]
+[[targets]]
 language = "rust"
-repository = "https://github.com/my-org/rust-sdk"
 output_dir = "./generated/rust"
-package_name = "my-api-sdk"
 
-# Generate Python SDK
-[targets.python]
+[[targets]]
 language = "python"
-repository = "https://github.com/my-org/python-sdk"
 output_dir = "./generated/python"
-package_name = "my-api-client"
 
-# Generate Go SDK
-[targets.go]
+[[targets]]
 language = "go"
-repository = "https://github.com/my-org/go-sdk"
 output_dir = "./generated/go"
-module_name = "github.com/my-org/go-sdk"
 
-# Generate Zig SDK
-[targets.zig]
-language = "zig"
-repository = "https://github.com/my-org/zig-sdk"
-output_dir = "./generated/zig"
-
-# Optional: AI enhancement
 [llm]
 provider = "anthropic"
-api_key = "sk-..."
-model = "claude-3-5-sonnet-20241022"
+api_key = "${ANTHROPIC_API_KEY}"
+model = "claude-sonnet-4-20250514"
 ```
 
-### 3. Generate SDKs
+## What it generates
+
+From Chelsea's OpenAPI spec (27 schemas, 15 operations):
+
+| Language | Files | Features |
+|----------|-------|----------|
+| TypeScript | client.ts, models.ts, index.ts, package.json, tsconfig.json | fetch-based, typed request/response bodies |
+| Rust | client.rs, models.rs, lib.rs, Cargo.toml | reqwest + serde, typed structs and enums |
+| Python | client.py, models.py, \_\_init\_\_.py, pyproject.toml | httpx, dataclasses, async/await |
+| Go | client.go, models.go, go.mod | net/http, typed structs with json tags |
+
+All SDKs include:
+- **Typed models** from `components/schemas` (structs, enums, nested refs)
+- **Typed request/response bodies** from `$ref` resolution
+- **Path parameter interpolation** (e.g. `vm_id` as function argument)
+- **Bearer token authentication**
+- **Generated README** with usage examples
+
+## LLM Enhancement
+
+With `--enhance`, each generated source file is post-processed through Claude for:
+- Doc comment improvements
+- Error handling polish
+- Language-idiomatic adjustments
+
+Enhancement is non-destructive — if the API call fails, the original generated code is used.
+
+## Architecture
+
+```
+src/
+  main.zig              CLI: generate, init, version
+  parser/openapi.zig    OpenAPI 3.1 JSON parser (schemas, operations, $refs)
+  config/config.zig     TOML config loader
+  config/toml.zig       TOML parser
+  generator/
+    sdk.zig             Core generator (iterates targets, renders templates)
+    template.zig        Mustache-like engine ({{var}}, {{#each}}, {{#if}})
+  llm/enhancer.zig      Optional LLM post-processing via Anthropic API
+templates/
+  typescript/           6 templates (client, models, index, package.json, ...)
+  rust/                 4 templates (client, models, lib, Cargo.toml)
+  python/               5 templates (client, models, __init__, pyproject, ...)
+  go/                   4 templates (client, models, go.mod, README)
+  zig/                  3 templates (client, build.zig, README)
+```
+
+## Chelsea automation
+
+Sterling is configured to auto-generate SDKs from [hdresearch/chelsea](https://github.com/hdresearch/chelsea)'s OpenAPI spec:
 
 ```bash
-# Basic generation
-sterling generate --spec api.yaml --config sterling.toml
+# Generate from Chelsea's spec
+./zig-out/bin/sterling generate \
+  --spec ../chelsea/openapi/openapi.json \
+  --config sterling.toml
 
-# With AI enhancement
-export ANTHROPIC_API_KEY=your_key_here
-sterling generate --spec api.yaml --config sterling.toml --enhance
-
-# Generate specific language only
-sterling generate --spec api.yaml --config sterling.toml --target typescript
+# Sync docs to vers-docs (Mintlify)
+./sync-vers-docs.sh ../chelsea/openapi/openapi.json
 ```
 
-## 📋 Language-Specific Features
+The GitHub Actions workflow (`.github/workflows/sterling-automation.yml`) runs on:
+- `repository_dispatch` from Chelsea when the spec changes
+- Daily schedule (6am UTC)
+- Manual `workflow_dispatch`
 
-### TypeScript SDK
-- **Modern ES modules** with CommonJS compatibility
-- **Full TypeScript definitions** for all API endpoints
-- **Fetch-based HTTP client** with configurable options
-- **Tree-shakeable exports** for optimal bundle size
-- **Built-in request/response validation**
+It generates SDKs and pushes to per-language repos, then syncs the spec to `hdresearch/vers-docs`.
 
-### Rust SDK
-- **Async/await support** with tokio runtime
-- **reqwest HTTP client** with connection pooling
-- **serde serialization** for type-safe JSON handling
-- **Comprehensive error types** with proper error chains
-- **Optional features** for different HTTP backends
+## License
 
-### Python SDK
-- **Async and sync clients** for maximum flexibility
-- **httpx HTTP client** with HTTP/2 support
-- **Pydantic models** for request/response validation
-- **Type hints** for full IDE support
-- **Automatic retry logic** with exponential backoff
-
-### Go SDK
-- **Context-aware requests** for proper cancellation
-- **Standard library HTTP client** with custom transport
-- **Struct-based models** with JSON tags
-- **Interface-based design** for easy testing
-- **Comprehensive error handling**
-
-### Zig SDK
-- **Compile-time type safety** with comptime validation
-- **std.http client** for minimal dependencies
-- **JSON parsing/serialization** with built-in types
-- **Memory-safe operations** with allocator patterns
-- **Cross-platform compatibility**
-
-## 🔧 Advanced Configuration
-
-### Custom Templates
-Override default templates for any language:
-
-```toml
-[targets.typescript]
-language = "typescript"
-template_dir = "./custom-templates/typescript"
-```
-
-### Authentication Configuration
-```toml
-[auth]
-type = "bearer"  # or "api_key", "oauth2", "custom"
-header = "Authorization"
-prefix = "Bearer "
-```
-
-## 🤝 Contributing
-
-Sterling is open source and welcomes contributions! Here's how to get started:
-
-1. **Fork the repository**
-2. **Set up development environment**:
-   ```bash
-   git clone https://github.com/your-username/sterling
-   cd sterling
-   zig build test  # Run tests
-   ```
-3. **Make your changes** and add tests
-4. **Submit a pull request**
-
-### Development Requirements
-- Zig 0.12 or later
-- Git for version control
-- Optional: Anthropic API key for LLM features
-
-## 📈 Roadmap
-
-### Upcoming Language Support
-- **Java** - Spring Boot compatible SDKs
-- **C#** - .NET compatible with NuGet packaging
-- **PHP** - Composer-ready with PSR standards
-- **Ruby** - Gem-compatible with Rails integration
-- **Swift** - iOS/macOS SDK generation
-
-### Planned Features
-- **GraphQL support** - Generate SDKs from GraphQL schemas
-- **gRPC integration** - Protocol buffer to SDK generation
-- **Mock server generation** - Automatic test server creation
-- **SDK testing framework** - Automated SDK validation
-- **Performance optimization** - Faster generation and smaller SDKs
-
-## 📄 License
-
-Sterling is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-- Built with [Zig](https://ziglang.org/) for performance and reliability
-- Inspired by [Stainless](https://stainlessapi.com/) and other commercial SDK generators
-- AI enhancement powered by [Anthropic Claude](https://anthropic.com/)
-- Documentation generation using [Mintlify](https://mintlify.com/)
-
----
-
-**Ready to generate your first SDK?** Check out our [examples](examples/) directory for complete working configurations!
+MIT

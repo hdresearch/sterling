@@ -1,214 +1,164 @@
 const std = @import("std");
-const json = std.json;
 
-/// Configuration for the LLM API client.
 pub const LLMConfig = struct {
     api_key: []const u8,
-    model: []const u8 = "claude-3-5-sonnet-20241022",
+    model: []const u8 = "claude-sonnet-4-20250514",
     base_url: []const u8 = "https://api.anthropic.com/v1/messages",
     max_tokens: u32 = 4096,
-    temperature: f32 = 0.1,
-    max_retries: u32 = 3,
-    retry_delay_ms: u64 = 1000,
 };
 
-/// Enhancement types supported by the enhancer.
-pub const EnhancementType = enum {
-    error_handling,
-    documentation,
-    performance,
-    idiomatic,
-    type_safety,
-
-    pub fn toString(self: EnhancementType) []const u8 {
-        return switch (self) {
-            .error_handling => "error_handling",
-            .documentation => "documentation",
-            .performance => "performance",
-            .idiomatic => "idiomatic",
-            .type_safety => "type_safety",
-        };
-    }
-};
-
-/// Errors that can occur during LLM operations.
-pub const LLMError = error{
-    ApiKeyMissing,
-    ApiRequestFailed,
-    ApiResponseInvalid,
-    ApiRateLimited,
-    ApiServerError,
-    ContentExtractionFailed,
-    ProcessSpawnFailed,
-    MaxRetriesExceeded,
-    EmptyResponse,
-    InvalidCodeBlock,
-};
-
-/// Result of an LLM API call with metadata.
-pub const LLMResult = struct {
-    content: []const u8,
-    model: []const u8,
-    input_tokens: u64,
-    output_tokens: u64,
-    allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *LLMResult) void {
-        self.allocator.free(self.content);
-        self.allocator.free(self.model);
-    }
-};
-
-/// HTTP response structure.
-pub const HttpResponse = struct {
-    status_code: u16,
-    body: []const u8,
-    allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *HttpResponse) void {
-        self.allocator.free(self.body);
-    }
-};
-
-pub const LLMEnhancer = struct {
+pub const Enhancer = struct {
     allocator: std.mem.Allocator,
     config: LLMConfig,
 
-    pub fn init(allocator: std.mem.Allocator, config: LLMConfig) LLMEnhancer {
-        return LLMEnhancer{
-            .allocator = allocator,
-            .config = config,
+    pub fn init(allocator: std.mem.Allocator, cfg: LLMConfig) Enhancer {
+        return .{ .allocator = allocator, .config = cfg };
+    }
+
+    /// Post-process a generated SDK file through the LLM for polish.
+    /// Returns the enhanced content, or the original on any failure.
+    pub fn enhance(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8) []const u8 {
+        return self.enhanceInner(code, language, filename) catch |err| {
+            std.debug.print("LLM enhancement skipped for {s}: {}\n", .{ filename, err });
+            return code;
         };
     }
 
-    pub fn deinit(self: *LLMEnhancer) void {
-        _ = self;
-    }
-
-    /// Fix compilation errors in generated code.
-    pub fn fixCompilationError(self: *LLMEnhancer, code: []const u8, error_message: []const u8, language: []const u8) ![]const u8 {
+    fn enhanceInner(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8) ![]const u8 {
+        // Build the prompt — we write it to a temp file to avoid shell escaping issues
         const prompt = try std.fmt.allocPrint(self.allocator,
-            \\Fix this {s} compilation error:
+            \\You are a code quality enhancer. Improve this generated {s} SDK file ({s}).
             \\
-            \\ERROR: {s}
-            \\
-            \\CODE:
-            \\```{s}
-            \\{s}
-            \\```
-            \\
-            \\Return only the corrected code without explanation.
-        , .{ language, error_message, language, code });
-        defer self.allocator.free(prompt);
-
-        return self.callLLM(prompt);
-    }
-
-    /// Enhance code with better practices, error handling, and documentation.
-    pub fn enhanceCode(self: *LLMEnhancer, code: []const u8, language: []const u8, enhancement_type: []const u8) ![]const u8 {
-        const prompt = try std.fmt.allocPrint(self.allocator,
-            \\Enhance this {s} code for {s}:
+            \\Rules:
+            \\- Fix any type errors or missing imports
+            \\- Add doc comments to public functions/types that lack them
+            \\- Improve error handling (use language-idiomatic error types)
+            \\- Do NOT change the public API surface (function names, parameter types)
+            \\- Do NOT add new dependencies
+            \\- Do NOT remove any existing functionality
+            \\- Return ONLY the improved code, no explanation
             \\
             \\```{s}
             \\{s}
             \\```
-            \\
-            \\Improvements to make:
-            \\- Add comprehensive error handling
-            \\- Improve type safety
-            \\- Add documentation comments
-            \\- Follow language best practices
-            \\- Optimize performance where possible
-            \\
-            \\Return only the enhanced code without explanation.
-        , .{ language, enhancement_type, language, code });
+        , .{ language, filename, language, code });
         defer self.allocator.free(prompt);
 
-        return self.callLLM(prompt);
-    }
+        // Write prompt to temp file (avoids shell quoting hell)
+        const prompt_path = "/tmp/sterling_llm_prompt.txt";
+        {
+            const f = try std.fs.cwd().createFile(prompt_path, .{});
+            defer f.close();
+            try f.writeAll(prompt);
+        }
+        defer std.fs.cwd().deleteFile(prompt_path) catch {};
 
-    /// Generate comprehensive documentation for the SDK.
-    pub fn generateDocumentation(self: *LLMEnhancer, code: []const u8, language: []const u8, api_spec: []const u8) ![]const u8 {
-        const prompt = try std.fmt.allocPrint(self.allocator,
-            \\Generate comprehensive documentation for this {s} SDK:
-            \\
-            \\API SPEC:
-            \\{s}
-            \\
-            \\CODE:
-            \\```{s}
-            \\{s}
-            \\```
-            \\
-            \\Generate:
-            \\1. Installation instructions
-            \\2. Quick start guide
-            \\3. API reference with examples
-            \\4. Error handling guide
-            \\5. Authentication setup
-            \\
-            \\Format as Markdown suitable for Mintlify docs.
-        , .{ language, api_spec, language, code });
-        defer self.allocator.free(prompt);
+        // Build JSON request body using jq to handle escaping properly
+        const body_cmd = try std.fmt.allocPrint(self.allocator,
+            \\jq -n --rawfile prompt {s} \
+            \\  --arg model "{s}" \
+            \\  --argjson max_tokens {d} \
+            \\  '{{model: $model, max_tokens: $max_tokens, messages: [{{role: "user", content: $prompt}}]}}'
+        , .{ prompt_path, self.config.model, self.config.max_tokens });
+        defer self.allocator.free(body_cmd);
 
-        return self.callLLM(prompt);
-    }
+        // Get the JSON body
+        var jq_child = std.process.Child.init(&.{ "sh", "-c", body_cmd }, self.allocator);
+        jq_child.stdout_behavior = .Pipe;
+        jq_child.stderr_behavior = .Pipe;
+        try jq_child.spawn();
+        const json_body = try jq_child.stdout.?.readToEndAlloc(self.allocator, 512 * 1024);
+        const jq_stderr = try jq_child.stderr.?.readToEndAlloc(self.allocator, 16 * 1024);
+        defer self.allocator.free(jq_stderr);
+        const jq_term = try jq_child.wait();
+        if (jq_term.Exited != 0) {
+            self.allocator.free(json_body);
+            return error.ProcessSpawnFailed;
+        }
+        defer self.allocator.free(json_body);
 
-    /// Make HTTP request to LLM API using curl.
-    fn callLLM(self: *LLMEnhancer, prompt: []const u8) ![]const u8 {
-        const request_body = try std.fmt.allocPrint(self.allocator,
-            \\{{
-            \\  "model": "{s}",
-            \\  "max_tokens": {d},
-            \\  "temperature": {d:.1},
-            \\  "messages": [
-            \\    {{
-            \\      "role": "user",
-            \\      "content": "{s}"
-            \\    }}
-            \\  ]
-            \\}}
-        , .{ self.config.model, self.config.max_tokens, self.config.temperature, prompt });
-        defer self.allocator.free(request_body);
+        // Write body to file for curl
+        const body_path = "/tmp/sterling_llm_body.json";
+        {
+            const f = try std.fs.cwd().createFile(body_path, .{});
+            defer f.close();
+            try f.writeAll(json_body);
+        }
+        defer std.fs.cwd().deleteFile(body_path) catch {};
 
-        // Use curl for HTTP request (more reliable than Zig's HTTP client)
+        // Call the API
         const curl_cmd = try std.fmt.allocPrint(self.allocator,
             \\curl -s -X POST "{s}" \
             \\  -H "Content-Type: application/json" \
             \\  -H "x-api-key: {s}" \
             \\  -H "anthropic-version: 2023-06-01" \
-            \\  -d '{s}'
-        , .{ self.config.base_url, self.config.api_key, request_body });
+            \\  -d @{s}
+        , .{ self.config.base_url, self.config.api_key, body_path });
         defer self.allocator.free(curl_cmd);
 
-        var child = std.process.Child.init(&[_][]const u8{ "sh", "-c", curl_cmd }, self.allocator);
+        var curl_child = std.process.Child.init(&.{ "sh", "-c", curl_cmd }, self.allocator);
+        curl_child.stdout_behavior = .Pipe;
+        curl_child.stderr_behavior = .Pipe;
+        try curl_child.spawn();
+        const stdout = try curl_child.stdout.?.readToEndAlloc(self.allocator, 1024 * 1024);
+        const curl_stderr = try curl_child.stderr.?.readToEndAlloc(self.allocator, 16 * 1024);
+        defer self.allocator.free(curl_stderr);
+        const curl_term = try curl_child.wait();
+        if (curl_term.Exited != 0) {
+            self.allocator.free(stdout);
+            return error.ApiRequestFailed;
+        }
+        defer self.allocator.free(stdout);
+
+        // Parse response — extract content[0].text
+        return self.extractContent(stdout);
+    }
+
+    fn extractContent(self: *Enhancer, response: []const u8) ![]const u8 {
+        // Use jq to extract the text content — more reliable than hand-parsing
+        const input_path = "/tmp/sterling_llm_response.json";
+        {
+            const f = try std.fs.cwd().createFile(input_path, .{});
+            defer f.close();
+            try f.writeAll(response);
+        }
+        defer std.fs.cwd().deleteFile(input_path) catch {};
+
+        const cmd = try std.fmt.allocPrint(self.allocator, "jq -r '.content[0].text // empty' {s}", .{input_path});
+        defer self.allocator.free(cmd);
+
+        var child = std.process.Child.init(&.{ "sh", "-c", cmd }, self.allocator);
         child.stdout_behavior = .Pipe;
         child.stderr_behavior = .Pipe;
-
         try child.spawn();
-        const stdout = try child.stdout.?.readToEndAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(stdout);
-        
-        const stderr = try child.stderr.?.readToEndAlloc(self.allocator, 1024 * 1024);
-        defer self.allocator.free(stderr);
-
+        const text = try child.stdout.?.readToEndAlloc(self.allocator, 1024 * 1024);
+        const jq_err = try child.stderr.?.readToEndAlloc(self.allocator, 16 * 1024);
+        defer self.allocator.free(jq_err);
         const term = try child.wait();
-        if (term != .Exited or term.Exited != 0) {
-            std.debug.print("curl error: {s}\n", .{stderr});
-            return LLMError.ApiRequestFailed;
+        if (term.Exited != 0 or text.len == 0) {
+            self.allocator.free(text);
+            return error.ContentExtractionFailed;
         }
 
-        // Parse JSON response
-        var parsed = json.parseFromSlice(json.Value, self.allocator, stdout, .{}) catch {
-            return LLMError.ApiResponseInvalid;
-        };
-        defer parsed.deinit();
+        // Strip markdown code fences if present
+        const trimmed = std.mem.trim(u8, text, " \t\n\r");
+        if (std.mem.startsWith(u8, trimmed, "```")) {
+            // Find end of first line (```typescript etc)
+            const first_nl = std.mem.indexOfScalar(u8, trimmed, '\n') orelse return try self.allocator.dupe(u8, trimmed);
+            const rest = trimmed[first_nl + 1 ..];
+            // Find closing ```
+            if (std.mem.lastIndexOf(u8, rest, "```")) |end| {
+                return try self.allocator.dupe(u8, std.mem.trim(u8, rest[0..end], " \t\n\r"));
+            }
+            return try self.allocator.dupe(u8, rest);
+        }
 
-        const content_array = parsed.value.object.get("content") orelse return LLMError.ContentExtractionFailed;
-        if (content_array.array.items.len == 0) return LLMError.EmptyResponse;
-        
-        const text_content = content_array.array.items[0].object.get("text") orelse return LLMError.ContentExtractionFailed;
-        
-        return try self.allocator.dupe(u8, text_content.string);
+        return try self.allocator.dupe(u8, trimmed);
     }
+
+    const error_set = error{
+        ProcessSpawnFailed,
+        ApiRequestFailed,
+        ContentExtractionFailed,
+    };
 };

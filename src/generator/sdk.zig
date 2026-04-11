@@ -2,6 +2,7 @@ const std = @import("std");
 pub const parser = @import("../parser/openapi.zig");
 pub const config = @import("../config/config.zig");
 pub const template = @import("template.zig");
+pub const enhancer_mod = @import("../llm/enhancer.zig");
 
 fn loadTemplate(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
@@ -11,9 +12,19 @@ pub const SDKGenerator = struct {
     allocator: std.mem.Allocator,
     spec: parser.OpenAPISpec,
     cfg: config.Config,
+    enhance: bool = false,
+    enhancer: ?enhancer_mod.Enhancer = null,
 
     pub fn init(allocator: std.mem.Allocator, spec: parser.OpenAPISpec, cfg: config.Config) SDKGenerator {
         return .{ .allocator = allocator, .spec = spec, .cfg = cfg };
+    }
+
+    pub fn enableEnhancement(self: *SDKGenerator, api_key: []const u8, model: []const u8) void {
+        self.enhance = true;
+        self.enhancer = enhancer_mod.Enhancer.init(self.allocator, .{
+            .api_key = api_key,
+            .model = model,
+        });
     }
 
     pub fn generateAll(self: *SDKGenerator) !void {
@@ -566,10 +577,31 @@ pub const SDKGenerator = struct {
         defer self.allocator.free(tmpl);
         var engine = template.Engine.init(self.allocator);
         const content = try engine.render(tmpl, ctx);
-        defer self.allocator.free(content);
+
+        // Optional LLM enhancement pass
+        const final_content = if (self.enhance and self.enhancer != null) blk: {
+            // Only enhance source code files, not configs/READMEs
+            const is_code = std.mem.endsWith(u8, rel, ".ts") or
+                std.mem.endsWith(u8, rel, ".rs") or
+                std.mem.endsWith(u8, rel, ".py") or
+                std.mem.endsWith(u8, rel, ".go") or
+                std.mem.endsWith(u8, rel, ".zig");
+            if (is_code) {
+                const lang = if (std.mem.endsWith(u8, rel, ".ts")) "typescript"
+                    else if (std.mem.endsWith(u8, rel, ".rs")) "rust"
+                    else if (std.mem.endsWith(u8, rel, ".py")) "python"
+                    else if (std.mem.endsWith(u8, rel, ".go")) "go"
+                    else "zig";
+                std.debug.print("  Enhancing {s}...\n", .{rel});
+                break :blk self.enhancer.?.enhance(content, lang, rel);
+            }
+            break :blk content;
+        } else content;
+        defer self.allocator.free(final_content);
+
         const file = try std.fs.cwd().createFile(out_path, .{});
         defer file.close();
-        try file.writeAll(content);
+        try file.writeAll(final_content);
     }
 
     // ── Case conversion ─────────────────────────────────────────────────

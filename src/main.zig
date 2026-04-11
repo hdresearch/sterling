@@ -94,6 +94,25 @@ fn handleGenerate(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // Generate SDKs for each target in config
     var generator = sdk_gen.SDKGenerator.init(allocator, spec, cfg);
 
+    // Wire LLM enhancement if --enhance and API key available
+    if (enhance) {
+        if (cfg.llm) |llm_cfg| {
+            // Resolve env var reference in api_key (e.g. "${ANTHROPIC_API_KEY}")
+            const key = if (std.mem.startsWith(u8, llm_cfg.api_key, "${"))
+                std.posix.getenv(llm_cfg.api_key[2 .. llm_cfg.api_key.len - 1]) orelse ""
+            else
+                llm_cfg.api_key;
+            if (key.len > 0) {
+                generator.enableEnhancement(key, llm_cfg.model);
+                std.debug.print("  LLM Enhancement: Active (model: {s})\n", .{llm_cfg.model});
+            } else {
+                std.debug.print("  LLM Enhancement: Skipped (no API key)\n", .{});
+            }
+        } else {
+            std.debug.print("  LLM Enhancement: Skipped (no [llm] config)\n", .{});
+        }
+    }
+
     for (cfg.targets) |target| {
         const lang_name = @tagName(target.language);
         std.debug.print("Generating {s} SDK to {s}\n", .{ lang_name, target.output_dir });
