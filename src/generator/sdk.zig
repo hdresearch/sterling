@@ -1,6 +1,6 @@
 const std = @import("std");
-pub const parser = @import("openapi");
-pub const config = @import("config");
+pub const parser = @import("../parser/openapi.zig");
+pub const config = @import("../config/config.zig");
 pub const template = @import("template.zig");
 
 /// Load a template file at runtime from the current working directory.
@@ -27,7 +27,7 @@ pub const SDKGenerator = struct {
         }
     }
 
-    fn generateTarget(self: *SDKGenerator, target: config.Config.Target) !void {
+    pub fn generateTarget(self: *SDKGenerator, target: config.Config.Target) !void {
         std.debug.print("Generating {s} SDK to {s}\n", .{ @tagName(target.language), target.output_dir });
 
         switch (target.language) {
