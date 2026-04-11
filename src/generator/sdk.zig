@@ -3,7 +3,6 @@ pub const parser = @import("../parser/openapi.zig");
 pub const config = @import("../config/config.zig");
 pub const template = @import("template.zig");
 
-/// Load a template file at runtime from the current working directory.
 fn loadTemplate(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
 }
@@ -11,25 +10,19 @@ fn loadTemplate(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
 pub const SDKGenerator = struct {
     allocator: std.mem.Allocator,
     spec: parser.OpenAPISpec,
-    config: config.Config,
+    cfg: config.Config,
 
     pub fn init(allocator: std.mem.Allocator, spec: parser.OpenAPISpec, cfg: config.Config) SDKGenerator {
-        return SDKGenerator{
-            .allocator = allocator,
-            .spec = spec,
-            .config = cfg,
-        };
+        return .{ .allocator = allocator, .spec = spec, .cfg = cfg };
     }
 
     pub fn generateAll(self: *SDKGenerator) !void {
-        for (self.config.targets) |target| {
+        for (self.cfg.targets) |target| {
             try self.generateTarget(target);
         }
     }
 
     pub fn generateTarget(self: *SDKGenerator, target: config.Config.Target) !void {
-        std.debug.print("Generating {s} SDK to {s}\n", .{ @tagName(target.language), target.output_dir });
-
         switch (target.language) {
             .typescript => try self.generateTypeScript(target),
             .rust => try self.generateRust(target),
@@ -39,29 +32,49 @@ pub const SDKGenerator = struct {
         }
     }
 
+    // ── Derive names from spec + config ─────────────────────────────────
+
+    fn deriveClassName(self: *SDKGenerator) []const u8 {
+        // Use project name from config, PascalCased
+        var buf: [256]u8 = undefined;
+        return self.allocator.dupe(u8, toPascalCaseStatic(self.cfg.project.name, &buf)) catch "Client";
+    }
+
+    fn deriveBaseUrl(_: *SDKGenerator) []const u8 {
+        return "https://api.vers.sh";
+    }
+
+    fn derivePackageName(self: *SDKGenerator, lang: []const u8) []const u8 {
+        _ = lang;
+        return self.cfg.project.name;
+    }
+
     // ── Context building ────────────────────────────────────────────────
 
-    /// Build a template context from the OpenAPI spec.
     fn buildBaseContext(self: *SDKGenerator) !*template.Context {
         const ctx = try self.allocator.create(template.Context);
         ctx.* = template.Context.init(self.allocator);
         try ctx.putString("spec_title", self.spec.info.title);
         try ctx.putString("spec_version", self.spec.info.version);
-        try ctx.putString("project_name", self.config.project.name);
-        try ctx.putString("project_version", self.config.project.version);
-        try ctx.putString("default_base_url", "https://api.example.com");
+        try ctx.putString("project_name", self.cfg.project.name);
+        try ctx.putString("project_version", self.cfg.project.version);
+
+        const class_name = self.deriveClassName();
+        try ctx.putString("class_name", class_name);
+        try ctx.putString("base_url", self.deriveBaseUrl());
+        try ctx.putString("package_name", self.derivePackageName(""));
+        try ctx.putString("module_name", self.derivePackageName("go"));
+        try ctx.putString("go_version", "1.21");
         return ctx;
     }
 
-    /// Build operation contexts from the spec's paths.
     fn buildOperationContexts(self: *SDKGenerator, parent: *const template.Context) ![]const *template.Context {
-        // Count operations
         var count: usize = 0;
         var count_iter = self.spec.paths.iterator();
         while (count_iter.next()) |entry| {
-            const path_item = entry.value_ptr;
-            inline for (.{ "get", "post", "put", "delete", "patch" }) |method| {
-                if (@field(path_item, method)) |op| {
+            const pi = entry.value_ptr;
+            inline for (.{ "get", "post", "put", "delete", "patch" }) |m| {
+                if (@field(pi, m)) |op| {
                     if (op.operationId != null) count += 1;
                 }
             }
@@ -73,177 +86,468 @@ pub const SDKGenerator = struct {
         var path_iter = self.spec.paths.iterator();
         while (path_iter.next()) |entry| {
             const path_str = entry.key_ptr.*;
-            const path_item = entry.value_ptr;
+            const pi = entry.value_ptr;
 
             inline for (.{ "get", "post", "put", "delete", "patch" }) |method| {
-                if (@field(path_item, method)) |op| {
+                if (@field(pi, method)) |op| {
                     if (op.operationId) |op_id| {
-                        const op_ctx = try self.allocator.create(template.Context);
-                        op_ctx.* = template.Context.init(self.allocator);
-                        op_ctx.parent = parent;
+                        const c = try self.allocator.create(template.Context);
+                        c.* = template.Context.init(self.allocator);
+                        c.parent = parent;
 
-                        try op_ctx.putString("operationId", op_id);
-                        try op_ctx.putString("summary", op.summary orelse "");
-                        try op_ctx.putString("path", path_str);
+                        try c.putString("operationId", op_id);
+                        try c.putString("summary", op.summary orelse "");
+                        try c.putString("path", path_str);
 
-                        // Method (uppercase)
                         const method_upper = comptime blk: {
                             var buf: [method.len]u8 = undefined;
-                            for (method, 0..) |c, i| {
-                                buf[i] = std.ascii.toUpper(c);
-                            }
+                            for (method, 0..) |ch, i| buf[i] = std.ascii.toUpper(ch);
                             break :blk buf;
                         };
-                        try op_ctx.putString("method", &method_upper);
-                        try op_ctx.putString("method_lower", method);
+                        try c.putString("method", &method_upper);
+                        try c.putString("method_lower", method);
 
-                        // Snake case name
                         var snake_buf: [256]u8 = undefined;
-                        const snake = toSnakeCaseStatic(op_id, &snake_buf);
-                        const snake_owned = try self.allocator.dupe(u8, snake);
-                        try op_ctx.putString("snake_name", snake_owned);
-
-                        // Pascal case name
+                        try c.putString("snake_name", try self.allocator.dupe(u8, toSnakeCaseStatic(op_id, &snake_buf)));
                         var pascal_buf: [256]u8 = undefined;
-                        const pascal = toPascalCaseStatic(op_id, &pascal_buf);
-                        const pascal_owned = try self.allocator.dupe(u8, pascal);
-                        try op_ctx.putString("pascal_name", pascal_owned);
+                        try c.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(op_id, &pascal_buf)));
 
                         // Path params
                         const has_path_params = std.mem.indexOfScalar(u8, path_str, '{') != null;
-                        try op_ctx.putBool("has_path_params", has_path_params);
+                        try c.putBool("has_path_params", has_path_params);
 
-                        // Format path for Rust format!() macro - replace {name} with {}
+                        // Build path param names list for function signatures
                         if (has_path_params) {
-                            const fmt_path = try self.buildFmtPath(path_str);
-                            try op_ctx.putString("fmt_path", fmt_path);
+                            const param_names = try self.extractPathParamNames(path_str);
+                            try c.putString("path_params_ts", param_names.ts_params);
+                            try c.putString("path_params_py", param_names.py_params);
+                            try c.putString("path_params_go", param_names.go_params);
+                            try c.putString("path_params_rust", param_names.rust_params);
+                            try c.putString("path_interpolate_ts", param_names.ts_interpolate);
+                            try c.putString("path_interpolate_py", param_names.py_interpolate);
+                            try c.putString("path_interpolate_go", param_names.go_interpolate);
+                            try c.putString("path_interpolate_rust", param_names.rust_interpolate);
                         }
 
                         // Body
                         const has_body = std.mem.eql(u8, method, "post") or
                             std.mem.eql(u8, method, "put") or
                             std.mem.eql(u8, method, "patch");
-                        try op_ctx.putBool("has_body", has_body);
+                        try c.putBool("has_body", has_body);
 
-                        // Function parameters string
-                        const fn_params = try self.buildFnParams(has_path_params, has_body);
-                        try op_ctx.putString("fn_params", fn_params);
+                        // Request body type from $ref
+                        if (op.requestBody) |rb| {
+                            if (rb.schema_ref) |ref| {
+                                try c.putString("request_type", ref);
+                                try c.putBool("has_typed_body", true);
+                            } else {
+                                try c.putBool("has_typed_body", false);
+                            }
+                        } else {
+                            try c.putBool("has_typed_body", false);
+                        }
 
-                        ops[idx] = op_ctx;
+                        // Response type from success response $ref
+                        var response_type: []const u8 = "";
+                        var resp_iter = op.responses.iterator();
+                        while (resp_iter.next()) |re| {
+                            // Look for 200/201 response with schema ref
+                            if (std.mem.startsWith(u8, re.key_ptr.*, "2")) {
+                                if (re.value_ptr.schema_ref) |ref| {
+                                    response_type = ref;
+                                    break;
+                                }
+                            }
+                        }
+                        if (response_type.len > 0) {
+                            try c.putString("response_type", response_type);
+                            try c.putBool("has_typed_response", true);
+                        } else {
+                            try c.putBool("has_typed_response", false);
+                        }
+
+                        // Rust fn_params
+                        try c.putString("fn_params", try self.buildRustFnParams(has_path_params, has_body, op));
+
+                        ops[idx] = c;
                         idx += 1;
                     }
                 }
             }
         }
-
         return @ptrCast(ops[0..idx]);
     }
 
-    fn buildFmtPath(self: *SDKGenerator, path_str: []const u8) ![]const u8 {
+    const PathParamInfo = struct {
+        ts_params: []const u8,
+        py_params: []const u8,
+        go_params: []const u8,
+        rust_params: []const u8,
+        ts_interpolate: []const u8,
+        py_interpolate: []const u8,
+        go_interpolate: []const u8,
+        rust_interpolate: []const u8,
+    };
+
+    fn extractPathParamNames(self: *SDKGenerator, path: []const u8) !PathParamInfo {
+        var ts_params = std.array_list.Managed(u8).init(self.allocator);
+        var py_params = std.array_list.Managed(u8).init(self.allocator);
+        var go_params = std.array_list.Managed(u8).init(self.allocator);
+        var rust_params = std.array_list.Managed(u8).init(self.allocator);
+        var ts_interp = std.array_list.Managed(u8).init(self.allocator);
+        var py_interp = std.array_list.Managed(u8).init(self.allocator);
+        var go_interp = std.array_list.Managed(u8).init(self.allocator);
+        var rust_interp = std.array_list.Managed(u8).init(self.allocator);
+
+        // Build interpolated path and param lists
+        var i: usize = 0;
+        var param_count: usize = 0;
+        while (i < path.len) {
+            if (path[i] == '{') {
+                const end = std.mem.indexOfScalarPos(u8, path, i + 1, '}') orelse break;
+                const name = path[i + 1 .. end];
+
+                if (param_count > 0) {
+                    try ts_params.appendSlice(", ");
+                    try py_params.appendSlice(", ");
+                    try go_params.appendSlice(", ");
+                    try rust_params.appendSlice(", ");
+                }
+                // TS: name: string
+                try ts_params.appendSlice(name);
+                try ts_params.appendSlice(": string");
+                // Python: name: str
+                try py_params.appendSlice(name);
+                try py_params.appendSlice(": str");
+                // Go: name string
+                try go_params.appendSlice(name);
+                try go_params.appendSlice(" string");
+                // Rust: name: &str
+                try rust_params.appendSlice(name);
+                try rust_params.appendSlice(": &str");
+
+                // Interpolation patterns
+                try ts_interp.appendSlice("${");
+                try ts_interp.appendSlice(name);
+                try ts_interp.append('}');
+
+                try py_interp.appendSlice("{");
+                try py_interp.appendSlice(name);
+                try py_interp.append('}');
+
+                // Go: use fmt.Sprintf
+                try go_interp.appendSlice("%s");
+
+                // Rust: use format!
+                try rust_interp.appendSlice("{}");
+
+                param_count += 1;
+                i = end + 1;
+            } else {
+                try ts_interp.append(path[i]);
+                try py_interp.append(path[i]);
+                try go_interp.append(path[i]);
+                try rust_interp.append(path[i]);
+                i += 1;
+            }
+        }
+
+        return .{
+            .ts_params = try ts_params.toOwnedSlice(),
+            .py_params = try py_params.toOwnedSlice(),
+            .go_params = try go_params.toOwnedSlice(),
+            .rust_params = try rust_params.toOwnedSlice(),
+            .ts_interpolate = try ts_interp.toOwnedSlice(),
+            .py_interpolate = try py_interp.toOwnedSlice(),
+            .go_interpolate = try go_interp.toOwnedSlice(),
+            .rust_interpolate = try rust_interp.toOwnedSlice(),
+        };
+    }
+
+    fn buildRustFnParams(self: *SDKGenerator, has_path_params: bool, has_body: bool, op: parser.Operation) ![]const u8 {
         var buf = std.array_list.Managed(u8).init(self.allocator);
-        var in_brace = false;
-        for (path_str) |c| {
-            if (c == '{') {
-                in_brace = true;
-                try buf.append('{');
-            } else if (c == '}') {
-                in_brace = false;
-                try buf.append('}');
-            } else if (!in_brace) {
-                try buf.append(c);
+        try buf.appendSlice("&self");
+        if (has_path_params) {
+            // Add each path param
+            for (op.parameters.items) |param| {
+                if (param.in == .path) {
+                    try buf.appendSlice(", ");
+                    try buf.appendSlice(param.name);
+                    try buf.appendSlice(": &str");
+                }
+            }
+        }
+        if (has_body) {
+            if (op.requestBody) |rb| {
+                if (rb.schema_ref) |ref| {
+                    try buf.appendSlice(", body: &");
+                    try buf.appendSlice(ref);
+                } else {
+                    try buf.appendSlice(", body: &impl serde::Serialize");
+                }
+            } else {
+                try buf.appendSlice(", body: &impl serde::Serialize");
             }
         }
         return try buf.toOwnedSlice();
     }
 
-    fn buildFnParams(self: *SDKGenerator, has_path_params: bool, has_body: bool) ![]const u8 {
-        var buf = std.array_list.Managed(u8).init(self.allocator);
-        try buf.appendSlice("&self");
-        if (has_path_params) {
-            try buf.appendSlice(", path_param: &str");
+    // ── Model context building from components/schemas ──────────────────
+
+    fn buildModelContexts(self: *SDKGenerator, base_ctx: *template.Context) ![]const *template.Context {
+        const comps = self.spec.components orelse return &.{};
+        var schema_iter = comps.schemas.iterator();
+
+        var count: usize = 0;
+        var count_iter = comps.schemas.iterator();
+        while (count_iter.next()) |_| count += 1;
+
+        if (count == 0) return &.{};
+
+        const models = try self.allocator.alloc(*template.Context, count);
+        var idx: usize = 0;
+
+        schema_iter = comps.schemas.iterator();
+        while (schema_iter.next()) |entry| {
+            const name = entry.key_ptr.*;
+            const schema = entry.value_ptr.*;
+
+            const m = try self.allocator.create(template.Context);
+            m.* = template.Context.init(self.allocator);
+            m.parent = base_ctx;
+
+            try m.putString("name", name);
+            var pascal_buf: [256]u8 = undefined;
+            try m.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(name, &pascal_buf)));
+            var snake_buf: [256]u8 = undefined;
+            try m.putString("snake_name", try self.allocator.dupe(u8, toSnakeCaseStatic(name, &snake_buf)));
+
+            // Is it an enum?
+            const is_enum = schema.enum_values.items.len > 0;
+            try m.putBool("is_enum", is_enum);
+            try m.putString("type_name", schema.type_name orelse "object");
+            try m.putString("description", schema.description orelse "");
+
+            // Enum values
+            if (is_enum) {
+                var enum_ctxs = try self.allocator.alloc(*template.Context, schema.enum_values.items.len);
+                for (schema.enum_values.items, 0..) |ev, ei| {
+                    const ec = try self.allocator.create(template.Context);
+                    ec.* = template.Context.init(self.allocator);
+                    ec.parent = m;
+                    try ec.putString("value", ev);
+                    var ev_pascal_buf: [256]u8 = undefined;
+                    try ec.putString("pascal_value", try self.allocator.dupe(u8, toPascalCaseStatic(ev, &ev_pascal_buf)));
+                    var ev_upper_buf: [256]u8 = undefined;
+                    try ec.putString("upper_value", try self.allocator.dupe(u8, toUpperStatic(ev, &ev_upper_buf)));
+                    enum_ctxs[ei] = ec;
+                }
+                try m.putList("enum_values", @ptrCast(enum_ctxs));
+            }
+
+            // Properties (for struct types)
+            if (schema.properties.items.len > 0) {
+                var prop_ctxs = try self.allocator.alloc(*template.Context, schema.properties.items.len);
+                for (schema.properties.items, 0..) |prop, pi| {
+                    const pc = try self.allocator.create(template.Context);
+                    pc.* = template.Context.init(self.allocator);
+                    pc.parent = m;
+                    try pc.putString("name", prop.name);
+                    try pc.putBool("required", prop.required);
+                    try pc.putString("description", prop.description orelse "");
+
+                    // Resolve type for each language
+                    try pc.putString("ts_type", self.resolveTypeTS(prop));
+                    try pc.putString("rust_type", self.resolveTypeRust(prop));
+                    try pc.putString("py_type", self.resolveTypePython(prop));
+                    try pc.putString("go_type", self.resolveTypeGo(prop));
+
+                    // Has $ref?
+                    if (prop.ref) |ref| {
+                        try pc.putString("ref", ref);
+                        try pc.putBool("has_ref", true);
+                    } else {
+                        try pc.putBool("has_ref", false);
+                    }
+
+                    prop_ctxs[pi] = pc;
+                }
+                try m.putList("properties", @ptrCast(prop_ctxs));
+                try m.putBool("has_properties", true);
+            } else {
+                try m.putBool("has_properties", false);
+            }
+
+            models[idx] = m;
+            idx += 1;
         }
-        if (has_body) {
-            try buf.appendSlice(", body: &impl Serialize");
-        }
-        return try buf.toOwnedSlice();
+        return @ptrCast(models[0..idx]);
     }
 
-    // ── TypeScript generation ───────────────────────────────────────────
+    // ── Type resolution per language ────────────────────────────────────
+
+    fn resolveTypeTS(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "unknown";
+        if (std.mem.eql(u8, t, "string")) return "string";
+        if (std.mem.eql(u8, t, "integer")) return "number";
+        if (std.mem.eql(u8, t, "number")) return "number";
+        if (std.mem.eql(u8, t, "boolean")) return "boolean";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return ir; // will need [] suffix in template
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "string[]";
+                return "unknown[]";
+            }
+            return "unknown[]";
+        }
+        if (std.mem.eql(u8, t, "object")) return "Record<string, unknown>";
+        return "unknown";
+    }
+
+    fn resolveTypeRust(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "serde_json::Value";
+        if (std.mem.eql(u8, t, "string")) {
+            if (prop.format) |f| {
+                if (std.mem.eql(u8, f, "uuid")) return "String"; // could use uuid::Uuid
+            }
+            return "String";
+        }
+        if (std.mem.eql(u8, t, "integer")) {
+            if (prop.format) |f| {
+                if (std.mem.eql(u8, f, "int32")) return "i32";
+                if (std.mem.eql(u8, f, "int64")) return "i64";
+            }
+            return "i64";
+        }
+        if (std.mem.eql(u8, t, "number")) return "f64";
+        if (std.mem.eql(u8, t, "boolean")) return "bool";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |_| return "Vec<serde_json::Value>"; // template handles concrete type
+            return "Vec<serde_json::Value>";
+        }
+        return "serde_json::Value";
+    }
+
+    fn resolveTypePython(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "Any";
+        if (std.mem.eql(u8, t, "string")) return "str";
+        if (std.mem.eql(u8, t, "integer")) return "int";
+        if (std.mem.eql(u8, t, "number")) return "float";
+        if (std.mem.eql(u8, t, "boolean")) return "bool";
+        if (std.mem.eql(u8, t, "array")) return "list";
+        return "Any";
+    }
+
+    fn resolveTypeGo(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "interface{}";
+        if (std.mem.eql(u8, t, "string")) return "string";
+        if (std.mem.eql(u8, t, "integer")) {
+            if (prop.format) |f| {
+                if (std.mem.eql(u8, f, "int32")) return "int32";
+            }
+            return "int64";
+        }
+        if (std.mem.eql(u8, t, "number")) return "float64";
+        if (std.mem.eql(u8, t, "boolean")) return "bool";
+        if (std.mem.eql(u8, t, "array")) return "[]interface{}";
+        return "interface{}";
+    }
+
+    // ── Language generators ─────────────────────────────────────────────
 
     fn generateTypeScript(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
-        
-        // Create directory structure
-        self.makeDirRecursive(output_dir) catch {};
-        const src_dir = try std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir});
-        defer self.allocator.free(src_dir);
-        self.makeDirRecursive(src_dir) catch {};
-        
-        // Build context
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
+
         const ctx = try self.buildBaseContext();
-        try ctx.putString("class_name", "PetStore");
-        try ctx.putString("package_name", "petstore-sdk");
-        try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-        
-        // Build operations
-        const ops = try self.buildOperationContexts(ctx);
-        try ctx.putList("operations", ops);
-        
-        // Build models
-        const models = try self.buildModelContexts(ctx);
-        try ctx.putList("models", models);
-        
-        // Generate client.ts
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/src/client.ts", .{output_dir});
-        defer self.allocator.free(client_path);
-        try self.renderTemplate("templates/typescript/client.ts.template", client_path, ctx);
-        
-        // Generate models.ts
-        const models_path = try std.fmt.allocPrint(self.allocator, "{s}/src/models.ts", .{output_dir});
-        defer self.allocator.free(models_path);
-        try self.renderTemplate("templates/typescript/models.ts.template", models_path, ctx);
-        
-        // Generate index.ts
-        const index_path = try std.fmt.allocPrint(self.allocator, "{s}/src/index.ts", .{output_dir});
-        defer self.allocator.free(index_path);
-        try self.renderTemplate("templates/typescript/index.ts.template", index_path, ctx);
-        
-        // Generate package.json
-        
-        // Generate tsconfig.json
-        const tsconfig_path = try std.fmt.allocPrint(self.allocator, "{s}/tsconfig.json", .{output_dir});
-        defer self.allocator.free(tsconfig_path);
-        try self.renderTemplate("templates/typescript/tsconfig.json.template", tsconfig_path, ctx);
-        
-        // Generate package.json
-        const package_path = try std.fmt.allocPrint(self.allocator, "{s}/package.json", .{output_dir});
-        defer self.allocator.free(package_path);
-        try self.renderTemplate("templates/typescript/package.json.template", package_path, ctx);
-        
-        // Generate README.md
-        const readme_path = try std.fmt.allocPrint(self.allocator, "{s}/README.md", .{output_dir});
-        defer self.allocator.free(readme_path);
-        try self.renderTemplate("templates/typescript/README.md.template", readme_path, ctx);
-        
-        std.debug.print("Generated TypeScript SDK at {s}\n", .{output_dir});
+        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+
+        try self.renderTo("templates/typescript/client.ts.template", d, "src/client.ts", ctx);
+        try self.renderTo("templates/typescript/models.ts.template", d, "src/models.ts", ctx);
+        try self.renderTo("templates/typescript/index.ts.template", d, "src/index.ts", ctx);
+        try self.renderTo("templates/typescript/tsconfig.json.template", d, "tsconfig.json", ctx);
+        try self.renderTo("templates/typescript/package.json.template", d, "package.json", ctx);
+        try self.renderTo("templates/typescript/README.md.template", d, "README.md", ctx);
+        std.debug.print("Generated TypeScript SDK at {s}\n", .{d});
     }
-    // ── Rust generation ─────────────────────────────────────────────────
 
-    pub fn generateRust(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
+    fn generateRust(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
 
-        self.makeDirRecursive(output_dir) catch {};
-        const src_dir = try std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir});
-        defer self.allocator.free(src_dir);
-        self.makeDirRecursive(src_dir) catch {};
+        const ctx = try self.buildBaseContext();
+        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+        try ctx.putList("models", try self.buildModelContexts(ctx));
 
-        try self.generateCargoToml(output_dir);
-        try self.generateRustLib(src_dir);
-        try self.generateRustModels(src_dir);
-        try self.generateRustClient(src_dir);
-
-        std.debug.print("Generated Rust SDK at {s}\n", .{output_dir});
+        try self.renderTo("templates/rust/client.rs.template", d, "src/client.rs", ctx);
+        try self.renderTo("templates/rust/models.rs.template", d, "src/models.rs", ctx);
+        try self.renderTo("templates/rust/lib.rs.template", d, "src/lib.rs", ctx);
+        try self.renderTo("templates/rust/cargo.toml.template", d, "Cargo.toml", ctx);
+        std.debug.print("Generated Rust SDK at {s}\n", .{d});
     }
+
+    fn generatePython(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
+
+        const ctx = try self.buildBaseContext();
+        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+
+        try self.renderTo("templates/python/client.py.template", d, "src/client.py", ctx);
+        try self.renderTo("templates/python/models.py.template", d, "src/models.py", ctx);
+        try self.renderTo("templates/python/__init__.py.template", d, "src/__init__.py", ctx);
+        try self.renderTo("templates/python/pyproject.toml.template", d, "pyproject.toml", ctx);
+        try self.renderTo("templates/python/README.md.template", d, "README.md", ctx);
+        std.debug.print("Generated Python SDK at {s}\n", .{d});
+    }
+
+    fn generateGo(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+
+        const ctx = try self.buildBaseContext();
+        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+
+        try self.renderTo("templates/go/client.go.template", d, "client.go", ctx);
+        try self.renderTo("templates/go/models.go.template", d, "models.go", ctx);
+        try self.renderTo("templates/go/go.mod.template", d, "go.mod", ctx);
+        try self.renderTo("templates/go/README.md.template", d, "README.md", ctx);
+        std.debug.print("Generated Go SDK at {s}\n", .{d});
+    }
+
+    fn generateZig(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
+
+        const ctx = try self.buildBaseContext();
+        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+
+        try self.renderTo("templates/zig/client.zig.template", d, "src/client.zig", ctx);
+        try self.renderTo("templates/zig/build.zig.template", d, "build.zig", ctx);
+        try self.renderTo("templates/zig/README.md.template", d, "README.md", ctx);
+        std.debug.print("Generated Zig SDK at {s}\n", .{d});
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────
 
     pub fn makeDirRecursive(_: *SDKGenerator, path: []const u8) !void {
         std.fs.cwd().makePath(path) catch |err| switch (err) {
@@ -252,168 +556,32 @@ pub const SDKGenerator = struct {
         };
     }
 
-    fn generateCargoToml(self: *SDKGenerator, output_dir: []const u8) !void {
-        const cargo_template =
-            \\[package]
-            \\name = "{{project_name}}"
-            \\version = "{{project_version}}"
-            \\edition = "2021"
-            \\
-            \\[dependencies]
-            \\reqwest = { version = "0.11", features = ["json"] }
-            \\serde = { version = "1", features = ["derive"] }
-            \\serde_json = "1"
-            \\tokio = { version = "1", features = ["full"] }
-            \\thiserror = "1"
-            \\
-        ;
-
-        const ctx = try self.buildBaseContext();
-        var engine = template.Engine.init(self.allocator);
-        const content = try engine.render(cargo_template, ctx);
-
-        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/Cargo.toml", .{output_dir});
-        defer self.allocator.free(file_path);
-
-        const file = try std.fs.cwd().createFile(file_path, .{});
-        defer file.close();
-        try file.writeAll(content);
-    }
-
-    fn generateRustLib(self: *SDKGenerator, src_dir: []const u8) !void {
-        const lib_template =
-            \\// Generated by Sterling SDK Generator
-            \\// {{spec_title}} v{{spec_version}}
-            \\
-            \\pub mod client;
-            \\pub mod models;
-            \\
-            \\pub use client::Client;
-            \\pub use models::*;
-            \\
-        ;
-
-        const ctx = try self.buildBaseContext();
-        var engine = template.Engine.init(self.allocator);
-        const content = try engine.render(lib_template, ctx);
-
-        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/lib.rs", .{src_dir});
-        defer self.allocator.free(file_path);
-
-        const file = try std.fs.cwd().createFile(file_path, .{});
-        defer file.close();
-        try file.writeAll(content);
-    }
-
-    fn generateRustModels(self: *SDKGenerator, src_dir: []const u8) !void {
-        const models_header =
-            \\// Generated by Sterling SDK Generator
-            \\use serde::{Deserialize, Serialize};
-            \\
-            \\
-        ;
-
-        var buf = std.array_list.Managed(u8).init(self.allocator);
-        defer buf.deinit();
-        const writer = buf.writer();
-
-        try writer.writeAll(models_header);
-
-        // Generate model structs from operations
-        var path_iter = self.spec.paths.iterator();
-        while (path_iter.next()) |entry| {
-            const path_item = entry.value_ptr;
-            inline for (.{ "get", "post", "put", "delete", "patch" }) |method| {
-                if (@field(path_item, method)) |op| {
-                    if (op.operationId) |op_id| {
-                        var name_buf: [256]u8 = undefined;
-                        const model_name = toPascalCaseStatic(op_id, &name_buf);
-
-                        try writer.print(
-                            \\#[derive(Debug, Clone, Serialize, Deserialize)]
-                            \\pub struct {s}Response {{
-                            \\    #[serde(flatten)]
-                            \\    pub data: serde_json::Value,
-                            \\}}
-                            \\
-                            \\
-                        , .{model_name});
-
-                        if (std.mem.eql(u8, method, "post") or std.mem.eql(u8, method, "put") or std.mem.eql(u8, method, "patch")) {
-                            try writer.print(
-                                \\#[derive(Debug, Clone, Serialize, Deserialize)]
-                                \\pub struct {s}Request {{
-                                \\    #[serde(flatten)]
-                                \\    pub data: serde_json::Value,
-                                \\}}
-                                \\
-                                \\
-                            , .{model_name});
-                        }
-                    }
-                }
-            }
-        }
-
-        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/models.rs", .{src_dir});
-        defer self.allocator.free(file_path);
-
-        const file = try std.fs.cwd().createFile(file_path, .{});
-        defer file.close();
-        try file.writeAll(buf.items);
-    }
-
-    fn generateRustClient(self: *SDKGenerator, src_dir: []const u8) !void {
-        // Build template context
-        const ctx = try self.buildBaseContext();
-
-        // Build operations
-        const ops = try self.buildOperationContexts(ctx);
-        try ctx.putList("operations", ops);
-
-        // Load and render template
-        const tmpl = try loadTemplate(self.allocator, "templates/rust/client.rs.template");
+    fn renderTo(self: *SDKGenerator, tmpl_path: []const u8, out_dir: []const u8, rel: []const u8, ctx: *template.Context) !void {
+        const out_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ out_dir, rel });
+        defer self.allocator.free(out_path);
+        const tmpl = loadTemplate(self.allocator, tmpl_path) catch |err| {
+            std.debug.print("Warning: template not found: {s} ({any})\n", .{ tmpl_path, err });
+            return;
+        };
         defer self.allocator.free(tmpl);
         var engine = template.Engine.init(self.allocator);
         const content = try engine.render(tmpl, ctx);
-
-        const file_path = try std.fmt.allocPrint(self.allocator, "{s}/client.rs", .{src_dir});
-        defer self.allocator.free(file_path);
-
-        const file = try std.fs.cwd().createFile(file_path, .{});
+        defer self.allocator.free(content);
+        const file = try std.fs.cwd().createFile(out_path, .{});
         defer file.close();
         try file.writeAll(content);
     }
 
-    // ── Case conversion utilities ───────────────────────────────────────
-
-    pub fn toSnakeCase(self: *SDKGenerator, input: []const u8, buf: *[256]u8) []const u8 {
-        _ = self;
-        return toSnakeCaseStatic(input, buf);
-    }
-
-    pub fn toPascalCase(self: *SDKGenerator, input: []const u8, buf: *[256]u8) []const u8 {
-        _ = self;
-        return toPascalCaseStatic(input, buf);
-    }
+    // ── Case conversion ─────────────────────────────────────────────────
 
     fn toSnakeCaseStatic(input: []const u8, buf: *[256]u8) []const u8 {
         var pos: usize = 0;
         for (input, 0..) |c, i| {
             if (std.ascii.isUpper(c)) {
-                if (i > 0 and pos < 255) {
-                    buf[pos] = '_';
-                    pos += 1;
-                }
-                if (pos < 256) {
-                    buf[pos] = std.ascii.toLower(c);
-                    pos += 1;
-                }
+                if (i > 0 and pos < 255) { buf[pos] = '_'; pos += 1; }
+                if (pos < 256) { buf[pos] = std.ascii.toLower(c); pos += 1; }
             } else {
-                if (pos < 256) {
-                    buf[pos] = c;
-                    pos += 1;
-                }
+                if (pos < 256) { buf[pos] = c; pos += 1; }
             }
         }
         return buf[0..pos];
@@ -421,170 +589,19 @@ pub const SDKGenerator = struct {
 
     fn toPascalCaseStatic(input: []const u8, buf: *[256]u8) []const u8 {
         var pos: usize = 0;
-        var capitalize_next = true;
+        var cap = true;
         for (input) |c| {
-            if (c == '_' or c == '-') {
-                capitalize_next = true;
-                continue;
-            }
-            if (pos < 256) {
-                buf[pos] = if (capitalize_next) std.ascii.toUpper(c) else c;
-                pos += 1;
-                capitalize_next = false;
-            }
+            if (c == '_' or c == '-' or c == ' ') { cap = true; continue; }
+            if (pos < 256) { buf[pos] = if (cap) std.ascii.toUpper(c) else c; pos += 1; cap = false; }
         }
         return buf[0..pos];
     }
 
-    // ── Stub generators ─────────────────────────────────────────────────
-
-    fn generatePython(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
-
-        // Create directory structure: output_dir/src/
-        self.makeDirRecursive(output_dir) catch {};
-        const src_dir = try std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir});
-        defer self.allocator.free(src_dir);
-        self.makeDirRecursive(src_dir) catch {};
-
-        // Build context
-        const ctx = try self.buildBaseContext();
-        try ctx.putString("class_name", "PetStore");
-        try ctx.putString("package_name", "petstore_sdk");
-        try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-
-        // Build operations
-        const ops = try self.buildOperationContexts(ctx);
-        try ctx.putList("operations", ops);
-
-        // Build models
-        const models = try self.buildModelContexts(ctx);
-        try ctx.putList("models", models);
-
-        // Generate src/client.py
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/src/client.py", .{output_dir});
-        defer self.allocator.free(client_path);
-        try self.renderTemplate("templates/python/client.py.template", client_path, ctx);
-
-        // Generate src/models.py
-        const models_path = try std.fmt.allocPrint(self.allocator, "{s}/src/models.py", .{output_dir});
-        defer self.allocator.free(models_path);
-        try self.renderTemplate("templates/python/models.py.template", models_path, ctx);
-
-        // Generate src/__init__.py
-        const init_path = try std.fmt.allocPrint(self.allocator, "{s}/src/__init__.py", .{output_dir});
-        defer self.allocator.free(init_path);
-        try self.renderTemplate("templates/python/__init__.py.template", init_path, ctx);
-
-        // Generate pyproject.toml
-        const pyproject_path = try std.fmt.allocPrint(self.allocator, "{s}/pyproject.toml", .{output_dir});
-        defer self.allocator.free(pyproject_path);
-        try self.renderTemplate("templates/python/pyproject.toml.template", pyproject_path, ctx);
-
-        // Generate README.md
-        const readme_path = try std.fmt.allocPrint(self.allocator, "{s}/README.md", .{output_dir});
-        defer self.allocator.free(readme_path);
-        try self.renderTemplate("templates/python/README.md.template", readme_path, ctx);
-
-        std.debug.print("Generated Python SDK at {s}\n", .{output_dir});
-    }
-    fn generateGo(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
-        
-        // Create directory structure
-        self.makeDirRecursive(output_dir) catch {};
-        
-        // Build context
-        const ctx = try self.buildBaseContext();
-        try ctx.putString("package_name", "petstore");
-        try ctx.putString("module_name", "github.com/example/petstore-sdk");
-        try ctx.putString("go_version", "1.21");
-        try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-        
-        // Build operations
-        const ops = try self.buildOperationContexts(ctx);
-        try ctx.putList("operations", ops);
-        
-        // Build models
-        const models = try self.buildModelContexts(ctx);
-        try ctx.putList("models", models);
-        
-        // Generate client.go
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/client.go", .{output_dir});
-        defer self.allocator.free(client_path);
-        try self.renderTemplate("templates/go/client.go.template", client_path, ctx);
-        
-        // Generate models.go
-        const models_path = try std.fmt.allocPrint(self.allocator, "{s}/models.go", .{output_dir});
-        defer self.allocator.free(models_path);
-        try self.renderTemplate("templates/go/models.go.template", models_path, ctx);
-        
-        // Generate go.mod
-        const gomod_path = try std.fmt.allocPrint(self.allocator, "{s}/go.mod", .{output_dir});
-        defer self.allocator.free(gomod_path);
-        try self.renderTemplate("templates/go/go.mod.template", gomod_path, ctx);
-        
-        // Generate README.md
-        const readme_path = try std.fmt.allocPrint(self.allocator, "{s}/README.md", .{output_dir});
-        defer self.allocator.free(readme_path);
-        try self.renderTemplate("templates/go/README.md.template", readme_path, ctx);
-        
-        std.debug.print("Generated Go SDK at {s}\n", .{output_dir});
-    }
-
-    fn generateZig(self: *SDKGenerator, target: config.Config.Target) !void {
-        const output_dir = target.output_dir;
-
-        // Create directory structure
-        self.makeDirRecursive(output_dir) catch {};
-        const src_dir = try std.fmt.allocPrint(self.allocator, "{s}/src", .{output_dir});
-        defer self.allocator.free(src_dir);
-        self.makeDirRecursive(src_dir) catch {};
-
-        // Build context
-        const ctx = try self.buildBaseContext();
-        try ctx.putString("base_url", "https://petstore.swagger.io/v2");
-
-        // Build operations
-        const ops = try self.buildOperationContexts(ctx);
-        try ctx.putList("operations", ops);
-
-        // Generate client.zig
-        const client_path = try std.fmt.allocPrint(self.allocator, "{s}/src/client.zig", .{output_dir});
-        defer self.allocator.free(client_path);
-        try self.renderTemplate("templates/zig/client.zig.template", client_path, ctx);
-
-        // Generate build.zig
-        const build_path = try std.fmt.allocPrint(self.allocator, "{s}/build.zig", .{output_dir});
-        defer self.allocator.free(build_path);
-        try self.renderTemplate("templates/zig/build.zig.template", build_path, ctx);
-
-        // Generate README.md
-        const readme_path = try std.fmt.allocPrint(self.allocator, "{s}/README.md", .{output_dir});
-        defer self.allocator.free(readme_path);
-        try self.renderTemplate("templates/zig/README.md.template", readme_path, ctx);
-
-        std.debug.print("Generated Zig SDK at {s}\n", .{output_dir});
-    }
-
-    pub fn renderTemplate(self: *SDKGenerator, template_path: []const u8, output_path: []const u8, ctx: *template.Context) !void {
-        const tmpl = try loadTemplate(self.allocator, template_path);
-        defer self.allocator.free(tmpl);
-        
-        var engine = template.Engine.init(self.allocator);
-        const content = try engine.render(tmpl, ctx);
-        defer self.allocator.free(content);
-        
-        const file = try std.fs.cwd().createFile(output_path, .{});
-        defer file.close();
-        try file.writeAll(content);
-    }
-    
-    fn buildModelContexts(self: *SDKGenerator, base_ctx: *template.Context) ![]const *template.Context {
-        _ = self;
-        _ = base_ctx;
-        // For now, return empty models - this would be expanded to parse OpenAPI schemas
-        const empty_models: []const *template.Context = &.{};
-        return empty_models;
+    fn toUpperStatic(input: []const u8, buf: *[256]u8) []const u8 {
+        var pos: usize = 0;
+        for (input) |c| {
+            if (pos < 256) { buf[pos] = std.ascii.toUpper(c); pos += 1; }
+        }
+        return buf[0..pos];
     }
 };

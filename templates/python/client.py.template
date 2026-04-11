@@ -8,15 +8,30 @@ from typing import Any, Optional
 class {{class_name}}Client:
     """Client for {{spec_title}}"""
 
-    def __init__(self, base_url: str = "{{base_url}}"):
+    def __init__(self, base_url: str = "{{base_url}}", api_key: Optional[str] = None):
         self.base_url = base_url
-        self._client = httpx.AsyncClient(base_url=base_url)
+        self.api_key = api_key
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        self._client = httpx.AsyncClient(base_url=base_url, headers=headers)
 
 {{#each operations}}
-    async def {{snake_name}}(self{{#if has_body}}, body: dict[str, Any] | None = None{{/if}}) -> httpx.Response:
+    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}) -> httpx.Response:
         """{{summary}}"""
+{{#if has_path_params}}
+        path = f"{{path_interpolate_py}}"
+        return await self._client.request("{{method}}", path{{#if has_body}}, json=body{{/if}})
+{{else}}
         return await self._client.request("{{method}}", "{{path}}"{{#if has_body}}, json=body{{/if}})
+{{/if}}
 
 {{/each}}
     async def close(self):
         await self._client.aclose()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        await self.close()

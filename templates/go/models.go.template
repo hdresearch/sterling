@@ -4,8 +4,29 @@
 package {{package_name}}
 
 {{#each models}}
-type {{pascal_name}} struct {
+{{#if is_enum}}
+type {{name}} string
+
+const (
+{{#each enum_values}}
+	{{pascal_value}} {{name}} = "{{value}}"
+{{/each}}
+)
+
+{{else}}
+{{#if has_properties}}
+// {{description}}
+type {{name}} struct {
+{{#each properties}}
+	{{pascal_name}} {{go_type}} `json:"{{name}}{{#unless required}},omitempty{{/unless}}"`
+{{/each}}
+}
+
+{{else}}
+type {{name}} struct {
 	Data interface{} `json:"data,omitempty"`
 }
 
+{{/if}}
+{{/if}}
 {{/each}}

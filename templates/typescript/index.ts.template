@@ -2,4 +2,5 @@
 // {{spec_title}} v{{spec_version}}
 
 export { {{class_name}}Client } from "./client";
+export type { {{class_name}}ClientOptions } from "./client";
 export * from "./models";

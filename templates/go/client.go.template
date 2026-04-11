@@ -7,38 +7,53 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
 type Client struct {
 	BaseURL    string
+	APIKey     string
 	HTTPClient *http.Client
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string, apiKey string) *Client {
 	return &Client{
 		BaseURL:    baseURL,
+		APIKey:     apiKey,
 		HTTPClient: &http.Client{},
 	}
 }
 
-{{#each operations}}
-// {{pascal_name}} - {{summary}}
-func (c *Client) {{pascal_name}}({{#if has_body}}body interface{}{{/if}}) (*http.Response, error) {
-{{#if has_body}}
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("marshal body: %w", err)
+func (c *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
+	var reqBody io.Reader
+	if body != nil {
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("marshal body: %w", err)
+		}
+		reqBody = bytes.NewBuffer(jsonBody)
 	}
-	req, err := http.NewRequest("{{method}}", c.BaseURL+"{{path}}", bytes.NewBuffer(jsonBody))
-{{else}}
-	req, err := http.NewRequest("{{method}}", c.BaseURL+"{{path}}", nil)
-{{/if}}
+	req, err := http.NewRequest(method, c.BaseURL+path, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
 	return c.HTTPClient.Do(req)
+}
+
+{{#each operations}}
+// {{pascal_name}} - {{summary}}
+func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}) (*http.Response, error) {
+{{#if has_path_params}}
+	path := fmt.Sprintf("{{path_interpolate_go}}", {{#if has_path_params}}vmId{{/if}})
+	return c.doRequest("{{method}}", path{{#if has_body}}, body{{else}}, nil{{/if}})
+{{else}}
+	return c.doRequest("{{method}}", "{{path}}"{{#if has_body}}, body{{else}}, nil{{/if}})
+{{/if}}
 }
 
 {{/each}}

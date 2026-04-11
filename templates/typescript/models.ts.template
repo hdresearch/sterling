@@ -2,8 +2,15 @@
 // {{spec_title}} v{{spec_version}}
 
 {{#each models}}
-export interface {{pascal_name}} {
-  [key: string]: unknown;
+{{#if is_enum}}
+export type {{name}} = {{#each enum_values}}"{{value}}"{{/each}};
+
+{{else}}
+export interface {{name}} {
+{{#each properties}}
+  {{name}}{{#unless required}}?{{/unless}}: {{ts_type}};
+{{/each}}
 }
 
+{{/if}}
 {{/each}}
