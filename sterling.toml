@@ -1,43 +1,28 @@
-# Sterling SDK Generator Configuration
+# Sterling SDK Generator Configuration for hdresearch/chelsea
+# Generates typed SDKs from the Orchestrator Control Plane API
 
 [project]
-name = "my-api"
-version = "1.0.0"
-description = "My API SDK"
+name = "vers"
+version = "0.1.0"
+description = "Vers API - VM orchestration platform"
 
 [targets.typescript]
 language = "typescript"
-repository = "https://github.com/your-org/typescript-sdk"
 output_dir = "./generated/typescript"
-branch = "main"
 
 [targets.rust]
 language = "rust"
-repository = "https://github.com/your-org/rust-sdk"
 output_dir = "./generated/rust"
-branch = "main"
 
 [targets.python]
 language = "python"
-repository = "https://github.com/your-org/python-sdk"
 output_dir = "./generated/python"
-branch = "main"
 
 [targets.go]
 language = "go"
-repository = "https://github.com/your-org/go-sdk"
 output_dir = "./generated/go"
-branch = "main"
 
 [llm]
 provider = "anthropic"
 api_key = "${ANTHROPIC_API_KEY}"
-model = "claude-3-5-sonnet-20241022"
-
-[github]
-token = "${GITHUB_TOKEN}"
-org = "your-org"
-
-[output.docs]
-format = "mintlify"
-output_dir = "./generated/docs"
+model = "claude-sonnet-4-20250514"

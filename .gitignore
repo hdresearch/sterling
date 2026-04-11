@@ -9,17 +9,17 @@ generated/
 .env
 .env.*
 
-# Test files
-test-openapi.yaml
+# Do not embed other repos
+chelsea/
 
-# Backup files
+# Backup/temp files
 *.backup
 *.bak
 *.bak[0-9]*
-
-# Logs & temp files
+*.patch
 *.log
 *.tmp
+temp_*
 
 # OS files
 .DS_Store

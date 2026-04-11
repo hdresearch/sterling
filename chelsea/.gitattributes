@@ -1,3 +1,0 @@
-*.lockb binary
-*.lock -diff
-*.eagle linguist-language=Tcl

@@ -1,2 +1,0 @@
-# Mulberry
-Mulberry is the host monitoring subsystem of chelsea. It is responsible for monitoring the state of the chelsea host machine, and on detecting issues, making a best-effort attempt to resolve them. A full list of technical specifications can be found in the main chelsea documentation at `crates/chelsea/docs`

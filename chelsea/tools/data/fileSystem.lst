@@ -1,2 +1,0 @@
-/etc/modules-load.d/10-user_entropy.conf
-/usr/lib/modules/%kernel%/build/user_entropy.ko

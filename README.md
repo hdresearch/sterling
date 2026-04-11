@@ -54,7 +54,7 @@ model = "claude-sonnet-4-20250514"
 
 ## What it generates
 
-From Chelsea's OpenAPI spec (27 schemas, 15 operations):
+From Chelsea's Orchestrator Control Plane API (43 schemas, 35 paths, 48 operations):
 
 | Language | Files | Features |
 |----------|-------|----------|
@@ -104,13 +104,10 @@ templates/
 Sterling is configured to auto-generate SDKs from [hdresearch/chelsea](https://github.com/hdresearch/chelsea)'s OpenAPI spec:
 
 ```bash
-# Generate from Chelsea's spec
+# Generate from Chelsea's orchestrator spec (the public API)
 ./zig-out/bin/sterling generate \
-  --spec ../chelsea/openapi/openapi.json \
+  --spec ../chelsea/openapi/orchestrator.openapi.json \
   --config sterling.toml
-
-# Sync docs to vers-docs (Mintlify)
-./sync-vers-docs.sh ../chelsea/openapi/openapi.json
 ```
 
 The GitHub Actions workflow (`.github/workflows/sterling-automation.yml`) runs on:
@@ -118,7 +115,11 @@ The GitHub Actions workflow (`.github/workflows/sterling-automation.yml`) runs o
 - Daily schedule (6am UTC)
 - Manual `workflow_dispatch`
 
-It generates SDKs and pushes to per-language repos, then syncs the spec to `hdresearch/vers-docs`.
+It generates SDKs and pushes to per-language repos (`vers-sdk-ts`, `vers-sdk-rust`,
+`vers-sdk-python`, `vers-sdk-go`).
+
+Note: vers-docs OpenAPI sync is handled by Chelsea's own `sync-openapi-to-docs.yaml`
+workflow — Sterling does not duplicate that.
 
 ## License
 

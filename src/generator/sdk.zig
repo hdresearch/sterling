@@ -51,7 +51,9 @@ pub const SDKGenerator = struct {
         return self.allocator.dupe(u8, toPascalCaseStatic(self.cfg.project.name, &buf)) catch "Client";
     }
 
-    fn deriveBaseUrl(_: *SDKGenerator) []const u8 {
+    fn deriveBaseUrl(self: *SDKGenerator) []const u8 {
+        // Use first server URL from spec if available, else fallback
+        if (self.spec.servers.items.len > 0) return self.spec.servers.items[0];
         return "https://api.vers.sh";
     }
 
@@ -341,7 +343,8 @@ pub const SDKGenerator = struct {
 
             // Enum values
             if (is_enum) {
-                var enum_ctxs = try self.allocator.alloc(*template.Context, schema.enum_values.items.len);
+                const ev_len = schema.enum_values.items.len;
+                var enum_ctxs = try self.allocator.alloc(*template.Context, ev_len);
                 for (schema.enum_values.items, 0..) |ev, ei| {
                     const ec = try self.allocator.create(template.Context);
                     ec.* = template.Context.init(self.allocator);
@@ -351,6 +354,7 @@ pub const SDKGenerator = struct {
                     try ec.putString("pascal_value", try self.allocator.dupe(u8, toPascalCaseStatic(ev, &ev_pascal_buf)));
                     var ev_upper_buf: [256]u8 = undefined;
                     try ec.putString("upper_value", try self.allocator.dupe(u8, toUpperStatic(ev, &ev_upper_buf)));
+                    try ec.putBool("is_last", ei == ev_len - 1);
                     enum_ctxs[ei] = ec;
                 }
                 try m.putList("enum_values", @ptrCast(enum_ctxs));
@@ -397,7 +401,7 @@ pub const SDKGenerator = struct {
 
     // ── Type resolution per language ────────────────────────────────────
 
-    fn resolveTypeTS(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+    fn resolveTypeTS(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
         if (prop.ref) |ref| return ref;
         const t = prop.type_name orelse return "unknown";
         if (std.mem.eql(u8, t, "string")) return "string";
@@ -405,9 +409,11 @@ pub const SDKGenerator = struct {
         if (std.mem.eql(u8, t, "number")) return "number";
         if (std.mem.eql(u8, t, "boolean")) return "boolean";
         if (std.mem.eql(u8, t, "array")) {
-            if (prop.items_ref) |ir| return ir; // will need [] suffix in template
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "{s}[]", .{ir}) catch return "unknown[]";
             if (prop.items_type) |it| {
                 if (std.mem.eql(u8, it, "string")) return "string[]";
+                if (std.mem.eql(u8, it, "integer") or std.mem.eql(u8, it, "number")) return "number[]";
+                if (std.mem.eql(u8, it, "boolean")) return "boolean[]";
                 return "unknown[]";
             }
             return "unknown[]";
@@ -416,12 +422,12 @@ pub const SDKGenerator = struct {
         return "unknown";
     }
 
-    fn resolveTypeRust(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+    fn resolveTypeRust(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
         if (prop.ref) |ref| return ref;
         const t = prop.type_name orelse return "serde_json::Value";
         if (std.mem.eql(u8, t, "string")) {
             if (prop.format) |f| {
-                if (std.mem.eql(u8, f, "uuid")) return "String"; // could use uuid::Uuid
+                if (std.mem.eql(u8, f, "uuid")) return "String";
             }
             return "String";
         }
@@ -435,24 +441,39 @@ pub const SDKGenerator = struct {
         if (std.mem.eql(u8, t, "number")) return "f64";
         if (std.mem.eql(u8, t, "boolean")) return "bool";
         if (std.mem.eql(u8, t, "array")) {
-            if (prop.items_ref) |_| return "Vec<serde_json::Value>"; // template handles concrete type
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "Vec<{s}>", .{ir}) catch return "Vec<serde_json::Value>";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "Vec<String>";
+                if (std.mem.eql(u8, it, "integer")) return "Vec<i64>";
+                if (std.mem.eql(u8, it, "number")) return "Vec<f64>";
+                if (std.mem.eql(u8, it, "boolean")) return "Vec<bool>";
+            }
             return "Vec<serde_json::Value>";
         }
         return "serde_json::Value";
     }
 
-    fn resolveTypePython(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+    fn resolveTypePython(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
         if (prop.ref) |ref| return ref;
         const t = prop.type_name orelse return "Any";
         if (std.mem.eql(u8, t, "string")) return "str";
         if (std.mem.eql(u8, t, "integer")) return "int";
         if (std.mem.eql(u8, t, "number")) return "float";
         if (std.mem.eql(u8, t, "boolean")) return "bool";
-        if (std.mem.eql(u8, t, "array")) return "list";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "list[{s}]", .{ir}) catch return "list";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "list[str]";
+                if (std.mem.eql(u8, it, "integer")) return "list[int]";
+                if (std.mem.eql(u8, it, "number")) return "list[float]";
+                if (std.mem.eql(u8, it, "boolean")) return "list[bool]";
+            }
+            return "list";
+        }
         return "Any";
     }
 
-    fn resolveTypeGo(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+    fn resolveTypeGo(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
         if (prop.ref) |ref| return ref;
         const t = prop.type_name orelse return "interface{}";
         if (std.mem.eql(u8, t, "string")) return "string";
@@ -464,7 +485,16 @@ pub const SDKGenerator = struct {
         }
         if (std.mem.eql(u8, t, "number")) return "float64";
         if (std.mem.eql(u8, t, "boolean")) return "bool";
-        if (std.mem.eql(u8, t, "array")) return "[]interface{}";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "[]{s}", .{ir}) catch return "[]interface{}";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "[]string";
+                if (std.mem.eql(u8, it, "integer")) return "[]int64";
+                if (std.mem.eql(u8, it, "number")) return "[]float64";
+                if (std.mem.eql(u8, it, "boolean")) return "[]bool";
+            }
+            return "[]interface{}";
+        }
         return "interface{}";
     }
 

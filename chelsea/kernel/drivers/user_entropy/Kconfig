@@ -1,8 +1,0 @@
-config USER_ENTROPY
-	tristate "User-space entropy feeder (/dev/user_entropy)"
-	help
-	  Provides a character device that lets unprivileged programs supply
-	  *uncredited* entropy to the kernel via add_device_randomness().
-
-	  Say M to build it as a module named user_entropy.  The device node
-	  will be created automatically with udev.

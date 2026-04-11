@@ -3,7 +3,7 @@
 
 {{#each models}}
 {{#if is_enum}}
-export type {{name}} = {{#each enum_values}}"{{value}}"{{/each}};
+export type {{name}} = {{#each enum_values}}"{{value}}"{{#unless is_last}} | {{/unless}}{{/each}};
 
 {{else}}
 export interface {{name}} {

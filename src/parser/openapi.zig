@@ -1,11 +1,16 @@
 const std = @import("std");
 
+pub const ServerList = struct {
+    items: []const []const u8 = &.{},
+};
+
 pub const OpenAPISpec = struct {
     allocator: std.mem.Allocator,
     openapi: []const u8,
     info: Info,
     paths: std.StringHashMap(PathItem),
     components: ?Components = null,
+    servers: ServerList = .{},
 
     pub fn deinit(self: *OpenAPISpec) void {
         var path_iter = self.paths.iterator();
@@ -213,6 +218,21 @@ pub fn parseOpenAPIJson(allocator: std.mem.Allocator, json_content: []const u8) 
     // Parse openapi version
     if (root.object.get("openapi")) |oa| {
         if (oa == .string) spec.openapi = try allocator.dupe(u8, oa.string);
+    }
+
+    // Parse servers
+    if (root.object.get("servers")) |servers_val| {
+        if (servers_val == .array) {
+            var urls: std.ArrayListUnmanaged([]const u8) = .{};
+            for (servers_val.array.items) |server| {
+                if (server == .object) {
+                    if (server.object.get("url")) |u| {
+                        if (u == .string) try urls.append(allocator, try allocator.dupe(u8, u.string));
+                    }
+                }
+            }
+            spec.servers = .{ .items = try urls.toOwnedSlice(allocator) };
+        }
     }
 
     // Parse paths

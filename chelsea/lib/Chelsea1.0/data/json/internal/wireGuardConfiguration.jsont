@@ -1,9 +1,0 @@
-{
-  "private_key": "%private_key1%",
-  "public_key": "%public_key1%",
-  "ipv6_address": "%ipv6_address1%",
-  "proxy_public_key": "%public_key2%",
-  "proxy_ipv6_address": "%ipv6_address2%",
-  "proxy_public_ip": "%ipv4_address1%",
-  "wg_port": %port1%
-}
