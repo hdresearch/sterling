@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 {{#each models}}
 {{#if is_enum}}
+{{#if description}}
+/// {{description}}
+{{/if}}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum {{name}} {
 {{#each enum_values}}
@@ -19,6 +22,9 @@ pub enum {{name}} {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct {{name}} {
 {{#each properties}}
+{{#if description}}
+    /// {{description}}
+{{/if}}
     {{#unless required}}#[serde(skip_serializing_if = "Option::is_none")]
     {{/unless}}pub {{name}}: {{#if required}}{{rust_type}}{{else}}Option<{{rust_type}}>{{/if}},
 {{/each}}

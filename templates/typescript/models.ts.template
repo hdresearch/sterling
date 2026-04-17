@@ -3,11 +3,20 @@
 
 {{#each models}}
 {{#if is_enum}}
+{{#if description}}
+/** {{description}} */
+{{/if}}
 export type {{name}} = {{#each enum_values}}"{{value}}"{{#unless is_last}} | {{/unless}}{{/each}};
 
 {{else}}
+{{#if description}}
+/** {{description}} */
+{{/if}}
 export interface {{name}} {
 {{#each properties}}
+{{#if description}}
+  /** {{description}} */
+{{/if}}
   {{name}}{{#unless required}}?{{/unless}}: {{ts_type}};
 {{/each}}
 }

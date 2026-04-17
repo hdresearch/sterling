@@ -5,6 +5,9 @@ package {{go_package_name}}
 
 {{#each models}}
 {{#if is_enum}}
+{{#if description}}
+// {{description}}
+{{/if}}
 type {{name}} string
 
 const (
@@ -18,6 +21,9 @@ const (
 // {{description}}
 type {{name}} struct {
 {{#each properties}}
+{{#if description}}
+	// {{description}}
+{{/if}}
 	{{pascal_name}} {{go_type}} `json:"{{name}}{{#unless required}},omitempty{{/unless}}"`
 {{/each}}
 }

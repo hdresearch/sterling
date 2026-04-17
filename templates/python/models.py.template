@@ -9,6 +9,9 @@ from typing import Any, Optional
 {{#each models}}
 {{#if is_enum}}
 class {{name}}(str, Enum):
+{{#if description}}
+    """{{description}}"""
+{{/if}}
 {{#each enum_values}}
     {{upper_value}} = "{{value}}"
 {{/each}}
@@ -19,6 +22,9 @@ class {{name}}(str, Enum):
 class {{name}}:
     """{{description}}"""
 {{#each properties}}
+{{#if description}}
+    #: {{description}}
+{{/if}}
     {{name}}: {{#if required}}{{py_type}}{{else}}Optional[{{py_type}}] = None{{/if}}
 {{/each}}
 
