@@ -76,6 +76,12 @@ impl Client {
         self
     }
 
+    /// Use a pre-configured `reqwest::Client` (e.g. with custom proxy, middleware, or TLS settings).
+    pub fn with_http_client(mut self, client: HttpClient) -> Self {
+        self.http = client;
+        self
+    }
+
     fn auth_header(&self) -> Option<String> {
         self.api_key.as_ref().map(|k| format!("Bearer {}", k))
     }

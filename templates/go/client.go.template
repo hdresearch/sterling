@@ -73,7 +73,18 @@ func retryDelay(attempt int) time.Duration {
 	return time.Duration(baseMs+jitterMs) * time.Millisecond
 }
 
-func NewClient(baseURL string, apiKey string) *Client {
+// ClientOption is a functional option for configuring the Client.
+type ClientOption func(*Client)
+
+// WithHTTPClient sets a custom *http.Client for the SDK client.
+// Use this to provide custom transport, proxy settings, or middleware.
+func WithHTTPClient(hc *http.Client) ClientOption {
+	return func(c *Client) {
+		c.HTTPClient = hc
+	}
+}
+
+func NewClient(baseURL string, apiKey string, opts ...ClientOption) *Client {
 	if baseURL == "" {
 		if envURL := os.Getenv("VERS_BASE_URL"); envURL != "" {
 			baseURL = envURL
@@ -85,7 +96,7 @@ func NewClient(baseURL string, apiKey string) *Client {
 		}
 	}
 	envLogLevel := parseLogLevel(os.Getenv("VERS_LOG"))
-	return &Client{
+	c := &Client{
 		BaseURL:    baseURL,
 		APIKey:     apiKey,
 		HTTPClient: &http.Client{},
@@ -94,6 +105,10 @@ func NewClient(baseURL string, apiKey string) *Client {
 		LogLevel:   envLogLevel,
 		Logger:     log.New(os.Stderr, "[vers_sdk] ", log.LstdFlags),
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 func (c *Client) logf(level LogLevel, format string, args ...interface{}) {
