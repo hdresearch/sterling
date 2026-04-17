@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 type Client struct {
@@ -47,13 +48,24 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 
 {{#each operations}}
 // {{pascal_name}} - {{summary}}
-func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}) (*http.Response, error) {
+func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{query_params_go}}{{/if}}) (*http.Response, error) {
 {{#if has_path_params}}
-	path := fmt.Sprintf("{{path_interpolate_go}}", {{go_format_args}})
-	return c.doRequest("{{method}}", path{{#if has_body}}, body{{else}}, nil{{/if}})
+	reqPath := fmt.Sprintf("{{path_interpolate_go}}", {{go_format_args}})
 {{else}}
-	return c.doRequest("{{method}}", "{{path}}"{{#if has_body}}, body{{else}}, nil{{/if}})
+	reqPath := "{{path}}"
 {{/if}}
+{{#if has_query_params}}
+	params := url.Values{}
+{{#each query_params}}
+	if {{name}} != nil {
+		params.Set("{{name}}", fmt.Sprintf("%v", *{{name}}))
+	}
+{{/each}}
+	if qs := params.Encode(); qs != "" {
+		reqPath += "?" + qs
+	}
+{{/if}}
+	return c.doRequest("{{method}}", reqPath{{#if has_body}}, body{{else}}, nil{{/if}})
 }
 
 {{/each}}

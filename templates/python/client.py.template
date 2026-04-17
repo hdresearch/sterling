@@ -17,13 +17,22 @@ class {{class_name}}Client:
         self._client = httpx.AsyncClient(base_url=base_url, headers=headers)
 
 {{#each operations}}
-    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}) -> httpx.Response:
+    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}{{#if has_query_params}}{{query_params_py}}{{/if}}) -> httpx.Response:
         """{{summary}}"""
 {{#if has_path_params}}
-        path = f"{{path_interpolate_py}}"
-        return await self._client.request("{{method}}", path{{#if has_body}}, json=body{{/if}})
+        url = f"{{path_interpolate_py}}"
 {{else}}
-        return await self._client.request("{{method}}", "{{path}}"{{#if has_body}}, json=body{{/if}})
+        url = "{{path}}"
+{{/if}}
+{{#if has_query_params}}
+        params: dict[str, Any] = {}
+{{#each query_params}}
+        if {{name}} is not None:
+            params["{{name}}"] = {{name}}
+{{/each}}
+        return await self._client.request("{{method}}", url{{#if has_body}}, json=body{{/if}}, params=params)
+{{else}}
+        return await self._client.request("{{method}}", url{{#if has_body}}, json=body{{/if}})
 {{/if}}
 
 {{/each}}

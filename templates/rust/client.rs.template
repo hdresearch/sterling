@@ -32,9 +32,21 @@ impl Client {
     /// {{summary}}
     pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{response_type}}{{else}}reqwest::Response{{/if}}, reqwest::Error> {
 {{#if has_path_params}}
-        let url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
+        let mut url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
 {{else}}
-        let url = format!("{}{}", self.base_url, "{{path}}");
+        let mut url = format!("{}{}", self.base_url, "{{path}}");
+{{/if}}
+{{#if has_query_params}}
+        let mut query_parts: Vec<String> = Vec::new();
+{{#each query_params}}
+        if let Some(ref val) = {{name}} {
+            query_parts.push(format!("{{name}}={}", val));
+        }
+{{/each}}
+        if !query_parts.is_empty() {
+            url.push('?');
+            url.push_str(&query_parts.join("&"));
+        }
 {{/if}}
         let mut req = self.http.{{method_lower}}(&url);
         if let Some(ref token) = self.auth_header() {

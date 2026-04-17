@@ -39,22 +39,25 @@ export class {{class_name}}Client {
   /**
    * {{summary}}
    */
-  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
+  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}{{#if has_query_params}}{{query_params_ts}}{{/if}}): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
 {{#if has_path_params}}
-    const path = `{{path_interpolate_ts}}`;
+    let url = `{{path_interpolate_ts}}`;
+{{else}}
+    let url = "{{path}}";
+{{/if}}
+{{#if has_query_params}}
+    const params = new URLSearchParams();
+{{#each query_params}}
+    if ({{name}} !== undefined) params.append("{{name}}", String({{name}}));
+{{/each}}
+    const qs = params.toString();
+    if (qs) url += "?" + qs;
+{{/if}}
 {{#if has_typed_response}}
-    const resp = await this.request("{{method}}", path{{#if has_body}}, body{{/if}});
+    const resp = await this.request("{{method}}", url{{#if has_body}}, body{{/if}});
     return resp.json() as Promise<{{response_type}}>;
 {{else}}
-    return this.request("{{method}}", path{{#if has_body}}, body{{/if}});
-{{/if}}
-{{else}}
-{{#if has_typed_response}}
-    const resp = await this.request("{{method}}", "{{path}}"{{#if has_body}}, body{{/if}});
-    return resp.json() as Promise<{{response_type}}>;
-{{else}}
-    return this.request("{{method}}", "{{path}}"{{#if has_body}}, body{{/if}});
-{{/if}}
+    return this.request("{{method}}", url{{#if has_body}}, body{{/if}});
 {{/if}}
   }
 
