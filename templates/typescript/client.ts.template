@@ -94,6 +94,42 @@ export class {{class_name}}Client {
 {{/each}}
   }
 
+  /**
+   * Make a GET request to an arbitrary path. Uses the same authentication,
+   * retries, and error handling as generated methods.
+   */
+  get<T = unknown>(path: string, options?: RequestOptions): Promise<T> {
+    return this.request("GET", path, undefined, options).then(r => r.json() as Promise<T>);
+  }
+
+  /**
+   * Make a POST request to an arbitrary path.
+   */
+  post<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+    return this.request("POST", path, body, options).then(r => r.json() as Promise<T>);
+  }
+
+  /**
+   * Make a PUT request to an arbitrary path.
+   */
+  put<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+    return this.request("PUT", path, body, options).then(r => r.json() as Promise<T>);
+  }
+
+  /**
+   * Make a PATCH request to an arbitrary path.
+   */
+  patch<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+    return this.request("PATCH", path, body, options).then(r => r.json() as Promise<T>);
+  }
+
+  /**
+   * Make a DELETE request to an arbitrary path.
+   */
+  del<T = unknown>(path: string, options?: RequestOptions): Promise<T> {
+    return this.request("DELETE", path, undefined, options).then(r => r.json() as Promise<T>);
+  }
+
   private log(level: LogLevel, message: string): void {
     if (level === 'off' || LOG_LEVEL_ORDER[level] > LOG_LEVEL_ORDER[this.logLevel]) return;
     const ts = new Date().toISOString();
