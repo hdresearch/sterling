@@ -31,10 +31,18 @@ impl Client {
 {{#each operations}}
     /// {{summary}}
     pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{response_type}}{{else}}reqwest::Response{{/if}}, reqwest::Error> {
+{{#if has_query_params}}
 {{#if has_path_params}}
         let mut url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
 {{else}}
         let mut url = format!("{}{}", self.base_url, "{{path}}");
+{{/if}}
+{{else}}
+{{#if has_path_params}}
+        let url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
+{{else}}
+        let url = format!("{}{}", self.base_url, "{{path}}");
+{{/if}}
 {{/if}}
 {{#if has_query_params}}
         let mut query_parts: Vec<String> = Vec::new();
