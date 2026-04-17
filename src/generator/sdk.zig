@@ -241,6 +241,15 @@ pub const SDKGenerator = struct {
                         // Rust fn_params
                         try c.putString("fn_params", try self.buildRustFnParams(has_path_params, has_body, has_query_params, op));
 
+                        // Test call arguments for each language
+                        try c.putString("test_args_ts", try self.buildTestArgsTS(path_str, has_body));
+                        try c.putString("test_args_py", try self.buildTestArgsPy(path_str, has_body));
+                        try c.putString("test_args_go", try self.buildTestArgsGo(path_str, has_body));
+                        try c.putString("test_args_rust", try self.buildTestArgsRust(path_str, has_body));
+
+                        // Mark first operation for error test generation
+                        try c.putBool("is_first", idx == 0);
+
                         ops[idx] = c;
                         idx += 1;
                     }
@@ -390,6 +399,72 @@ pub const SDKGenerator = struct {
                     try buf.appendSlice(">");
                 }
             }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    // ── Test argument builders ────────────────────────────────────────
+
+    fn countPathParams(_: *SDKGenerator, path: []const u8) usize {
+        var count: usize = 0;
+        for (path) |ch| {
+            if (ch == '{') count += 1;
+        }
+        return count;
+    }
+
+    fn buildTestArgsTS(self: *SDKGenerator, path: []const u8, has_body: bool) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        const n = self.countPathParams(path);
+        for (0..n) |i| {
+            if (i > 0) try buf.appendSlice(", ");
+            try buf.appendSlice("\"test-id\"");
+        }
+        if (has_body) {
+            if (n > 0) try buf.appendSlice(", ");
+            try buf.appendSlice("{} as any");
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildTestArgsPy(self: *SDKGenerator, path: []const u8, has_body: bool) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        const n = self.countPathParams(path);
+        for (0..n) |i| {
+            if (i > 0) try buf.appendSlice(", ");
+            try buf.appendSlice("\"test-id\"");
+        }
+        if (has_body) {
+            if (n > 0) try buf.appendSlice(", ");
+            try buf.appendSlice("{}");
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildTestArgsGo(self: *SDKGenerator, path: []const u8, has_body: bool) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        const n = self.countPathParams(path);
+        for (0..n) |i| {
+            if (i > 0) try buf.appendSlice(", ");
+            try buf.appendSlice("\"test-id\"");
+        }
+        if (has_body) {
+            if (n > 0) try buf.appendSlice(", ");
+            try buf.appendSlice("nil");
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildTestArgsRust(self: *SDKGenerator, path: []const u8, has_body: bool) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        const n = self.countPathParams(path);
+        for (0..n) |i| {
+            if (i > 0) try buf.appendSlice(", ");
+            try buf.appendSlice("\"test-id\"");
+        }
+        if (has_body) {
+            if (n > 0) try buf.appendSlice(", ");
+            try buf.appendSlice("&serde_json::json!({})");
         }
         return try buf.toOwnedSlice();
     }
@@ -931,11 +1006,18 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/typescript/tsconfig.json.template", d, "tsconfig.json", ctx);
         try self.renderTo("templates/typescript/package.json.template", d, "package.json", ctx);
         try self.renderTo("templates/typescript/README.md.template", d, "README.md", ctx);
+<<<<<<< HEAD
         try self.renderTo("templates/typescript/lib/ssh/client.ts.template", d, "src/lib/ssh/client.ts", ctx);
         try self.renderTo("templates/typescript/lib/ssh/errors.ts.template", d, "src/lib/ssh/errors.ts", ctx);
         try self.renderTo("templates/typescript/lib/ssh/types.ts.template", d, "src/lib/ssh/types.ts", ctx);
         try self.renderTo("templates/typescript/lib/ssh/index.ts.template", d, "src/lib/ssh/index.ts", ctx);
         try self.renderTo("templates/typescript/lib/vm-ssh.ts.template", d, "src/lib/vm-ssh.ts", ctx);
+=======
+        const tests_dir = try std.fmt.allocPrint(self.allocator, "{s}/tests", .{d});
+        defer self.allocator.free(tests_dir);
+        self.makeDirRecursive(tests_dir) catch {};
+        try self.renderTo("templates/typescript/tests/client.test.ts.template", d, "tests/client.test.ts", ctx);
+>>>>>>> origin/agent/tests
         std.debug.print("Generated TypeScript SDK at {s}\n", .{d});
     }
 
@@ -955,6 +1037,10 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/rust/errors.rs.template", d, "src/errors.rs", ctx);
         try self.renderTo("templates/rust/lib.rs.template", d, "src/lib.rs", ctx);
         try self.renderTo("templates/rust/cargo.toml.template", d, "Cargo.toml", ctx);
+        const tests_dir = try std.fmt.allocPrint(self.allocator, "{s}/tests", .{d});
+        defer self.allocator.free(tests_dir);
+        self.makeDirRecursive(tests_dir) catch {};
+        try self.renderTo("templates/rust/tests/client_test.rs.template", d, "tests/client_test.rs", ctx);
         std.debug.print("Generated Rust SDK at {s}\n", .{d});
     }
 
@@ -975,6 +1061,10 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/python/__init__.py.template", d, "src/__init__.py", ctx);
         try self.renderTo("templates/python/pyproject.toml.template", d, "pyproject.toml", ctx);
         try self.renderTo("templates/python/README.md.template", d, "README.md", ctx);
+        const tests_dir = try std.fmt.allocPrint(self.allocator, "{s}/tests", .{d});
+        defer self.allocator.free(tests_dir);
+        self.makeDirRecursive(tests_dir) catch {};
+        try self.renderTo("templates/python/tests/test_client.py.template", d, "tests/test_client.py", ctx);
         std.debug.print("Generated Python SDK at {s}\n", .{d});
     }
 
@@ -991,6 +1081,7 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/go/errors.go.template", d, "errors.go", ctx);
         try self.renderTo("templates/go/go.mod.template", d, "go.mod", ctx);
         try self.renderTo("templates/go/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/go/client_test.go.template", d, "client_test.go", ctx);
         std.debug.print("Generated Go SDK at {s}\n", .{d});
     }
 

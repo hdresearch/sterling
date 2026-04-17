@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "jest"
+    "test": "npx tsx tests/client.test.ts"
   },
   "license": "MIT",
   "dependencies": {
@@ -14,6 +14,9 @@
   },
   "devDependencies": {
     "@types/node": "*",
-    "@types/ssh2": "^1.15.0"
+    "@types/ssh2": "^1.15.0",
+    "tsx": "*",
+    "typescript": "^5.0.0",
+    "vitest": "^3.1.1"
   }
 }
