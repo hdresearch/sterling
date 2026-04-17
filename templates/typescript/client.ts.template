@@ -2,6 +2,7 @@
 // {{spec_title}} v{{spec_version}}
 
 import type { {{#each models}}{{#unless is_enum}}{{name}}, {{/unless}}{{#if is_enum}}{{name}}, {{/if}}{{/each}} } from "./models";
+import { APIError, APIConnectionError } from "./errors";
 
 export interface {{class_name}}ClientOptions {
   baseUrl?: string;
@@ -20,7 +21,7 @@ export class {{class_name}}Client {
     this.headers = options.headers ?? {};
   }
 
-  private async request(method: string, path: string, body?: unknown): Promise<Response> {
+  private async request<T = unknown>(method: string, path: string, body?: unknown): Promise<Response> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...this.headers,
@@ -28,11 +29,32 @@ export class {{class_name}}Client {
     if (this.apiKey) {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
-    return fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (err) {
+      throw new APIConnectionError({ cause: err instanceof Error ? err : undefined });
+    }
+    if (!response.ok) {
+      let errorBody: object | undefined;
+      let errorMessage: string | undefined;
+      try {
+        const text = await response.text();
+        try {
+          errorBody = JSON.parse(text);
+        } catch {
+          errorMessage = text;
+        }
+      } catch {
+        // could not read body
+      }
+      throw APIError.generate(response.status, errorBody, errorMessage, response.headers);
+    }
+    return response;
   }
 
 {{#each operations}}
