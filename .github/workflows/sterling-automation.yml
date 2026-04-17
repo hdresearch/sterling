@@ -308,33 +308,267 @@ jobs:
 
     # ─── Documentation PR ───────────────────────────────────────────────
 
-    - name: Create PR in vers-docs
+    - name: Update vers-docs
       if: success()
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
-        BRANCH_NAME="sterling/update-api-docs-$(date +%Y%m%d-%H%M%S)"
+        set -e
+        BRANCH_NAME="sterling/update-api-docs"
+        VERSION=$(grep '"version"' generated/typescript/package.json | head -1 | sed 's/.*: "//;s/".*//')
+
         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/vers-docs.git vers-docs
         cd vers-docs
         git config user.name "Sterling"
         git config user.email "yev@hdr.is"
-        git checkout -b "$BRANCH_NAME"
-        mkdir -p docs/api/chelsea
-        cp ../chelsea/openapi/orchestrator.openapi.json docs/api/chelsea/openapi.json 2>/dev/null || true
-        git add docs/api/chelsea/
+
+        # Reuse existing branch or create new one
+        git checkout "$BRANCH_NAME" 2>/dev/null || git checkout -b "$BRANCH_NAME"
+
+        # 1. Update OpenAPI spec (correct path — where Mintlify reads it)
+        cp ../chelsea/openapi/orchestrator.openapi.json api-reference/openapi.json
+
+        # 2. Generate SDK docs page
+        cat > sdks.mdx << 'SDKEOF'
+        ---
+        title: "SDKs"
+        description: "Official Vers SDKs for 9 languages — auto-generated from the OpenAPI spec by Sterling"
+        ---
+
+        # SDKs
+
+        Vers publishes official SDKs for **9 languages**, all auto-generated from the OpenAPI spec and published to package registries on every API change.
+
+        ## Installation
+
+        <Tabs>
+          <Tab title="TypeScript">
+            ```bash
+            npm install vers-sdk
+            ```
+            ```typescript
+            import { VersSdkClient } from "vers-sdk";
+
+            const client = new VersSdkClient({ apiKey: process.env.VERS_API_KEY });
+            const vms = await client.listVms();
+            ```
+            [GitHub](https://github.com/hdresearch/ts-sdk) · [npm](https://www.npmjs.com/package/vers-sdk)
+          </Tab>
+          <Tab title="Python">
+            ```bash
+            pip install vers-sdk
+            ```
+            ```python
+            from vers_sdk import VersSdkClient
+
+            client = VersSdkClient(api_key=os.environ["VERS_API_KEY"])
+            vms = client.list_vms()
+            ```
+            [GitHub](https://github.com/hdresearch/python-sdk) · [PyPI](https://pypi.org/project/vers-sdk/)
+          </Tab>
+          <Tab title="Go">
+            ```bash
+            go get github.com/hdresearch/go-sdk
+            ```
+            ```go
+            import vers "github.com/hdresearch/go-sdk"
+
+            client := vers.NewVersSdkClient(os.Getenv("VERS_API_KEY"))
+            vms, err := client.ListVms(nil)
+            ```
+            [GitHub](https://github.com/hdresearch/go-sdk)
+          </Tab>
+          <Tab title="Rust">
+            ```bash
+            cargo add vers-sdk
+            ```
+            ```rust
+            use vers_sdk::VersSdkClient;
+
+            let client = VersSdkClient::new(std::env::var("VERS_API_KEY")?);
+            let vms = client.list_vms(None).await?;
+            ```
+            [GitHub](https://github.com/hdresearch/rust-sdk) · [crates.io](https://crates.io/crates/vers-sdk)
+          </Tab>
+          <Tab title="Ruby">
+            ```bash
+            gem install vers-sdk
+            ```
+            ```ruby
+            require "vers_sdk"
+
+            client = VersSdk::Client.new(api_key: ENV["VERS_API_KEY"])
+            vms = client.list_vms
+            ```
+            [GitHub](https://github.com/hdresearch/ruby-sdk) · [RubyGems](https://rubygems.org/gems/vers-sdk)
+          </Tab>
+          <Tab title="C#">
+            ```bash
+            dotnet add package vers-sdk
+            ```
+            ```csharp
+            using VersSdk;
+
+            var client = new VersClient(Environment.GetEnvironmentVariable("VERS_API_KEY"));
+            var vms = await client.ListVmsAsync();
+            ```
+            [GitHub](https://github.com/hdresearch/csharp-sdk) · [NuGet](https://www.nuget.org/packages/vers-sdk)
+          </Tab>
+          <Tab title="Java">
+            ```xml
+            <!-- Maven — coming soon to Maven Central -->
+            <dependency>
+              <groupId>com.vers</groupId>
+              <artifactId>vers-sdk</artifactId>
+              <version>0.1.6</version>
+            </dependency>
+            ```
+            ```java
+            import com.vers.sdk.VersClient;
+
+            VersClient client = new VersClient(System.getenv("VERS_API_KEY"));
+            List<VM> vms = client.listVms(null);
+            ```
+            [GitHub](https://github.com/hdresearch/java-sdk)
+          </Tab>
+          <Tab title="Kotlin">
+            ```kotlin
+            // Gradle
+            implementation("com.vers:vers-sdk:0.1.6")
+            ```
+            ```kotlin
+            import com.vers.sdk.VersClient
+
+            val client = VersClient(System.getenv("VERS_API_KEY"))
+            val vms = client.listVms()
+            ```
+            [GitHub](https://github.com/hdresearch/kotlin-sdk)
+          </Tab>
+          <Tab title="PHP">
+            ```bash
+            composer require vers/sdk
+            ```
+            ```php
+            use VersSdk\VersClient;
+
+            $client = new VersClient(getenv('VERS_API_KEY'));
+            $vms = $client->listVms();
+            ```
+            [GitHub](https://github.com/hdresearch/php-sdk)
+          </Tab>
+        </Tabs>
+
+        ## Features
+
+        All SDKs include:
+
+        - **Full API coverage** — 47 operations across VMs, commits, repositories, domains, environment variables, and tags
+        - **Typed models** — Request/response types generated from the OpenAPI schema
+        - **Error handling** — Typed error responses with status codes
+        - **Automatic retries** — Configurable retry with exponential backoff and `Retry-After` support
+        - **Request options** — Per-request timeout, headers, and idempotency key overrides
+        - **Query parameters** — Typed parameter interfaces for filtering and pagination
+        - **Platform detection** — `User-Agent` header with SDK version, language runtime, and OS info
+
+        ## Authentication
+
+        All SDKs accept an API key via constructor or environment variable:
+
+        ```bash
+        export VERS_API_KEY="your-api-key"
+        ```
+
+        Get your API key from [vers.sh/billing](https://vers.sh/billing).
+
+        ## Source
+
+        SDKs are auto-generated by [Sterling](https://github.com/hdresearch/sterling) from the [Chelsea OpenAPI spec](https://github.com/hdresearch/chelsea) and published on every API change.
+        SDKEOF
+
+        # Remove leading whitespace from heredoc (was indented in YAML)
+        sed -i 's/^        //' sdks.mdx
+
+        # 3. Add SDKs tab to docs.json if not already present
+        python3 << 'PYEOF'
+        import json
+
+        with open("docs.json", "r") as f:
+            docs = json.load(f)
+
+        tabs = docs["navigation"]["tabs"]
+        has_sdk_tab = any(t.get("tab") == "SDKs" for t in tabs)
+
+        if not has_sdk_tab:
+            # Insert SDKs tab before the API tab
+            api_idx = next((i for i, t in enumerate(tabs) if t.get("tab") == "API"), len(tabs))
+            sdk_tab = {
+                "tab": "SDKs",
+                "groups": [
+                    {
+                        "group": "SDKs",
+                        "pages": ["sdks"]
+                    }
+                ]
+            }
+            tabs.insert(api_idx, sdk_tab)
+
+            with open("docs.json", "w") as f:
+                json.dump(docs, f, indent=2)
+                f.write("\n")
+            print("Added SDKs tab to docs.json")
+        else:
+            print("SDKs tab already exists in docs.json")
+        PYEOF
+
+        # 4. Fix old SDK import references (vers → vers-sdk)
+        for f in vm-access.mdx api-reference/introduction.mdx; do
+          if [ -f "$f" ]; then
+            sed -i "s/from 'vers';/from 'vers-sdk';/g" "$f"
+            sed -i "s/import Vers, { withSSH }/import { VersSdkClient }/g" "$f"
+          fi
+        done
+
+        # 5. Stage all changes
+        git add api-reference/openapi.json sdks.mdx docs.json vm-access.mdx api-reference/introduction.mdx 2>/dev/null || true
+
         if git diff --staged --quiet; then
-          echo "No documentation changes to commit"
+          echo "No documentation changes — spec and SDK docs are up to date"
+          exit 0
+        fi
+
+        git commit -m "Update API docs and SDK reference (v${VERSION})"
+
+        # Force-push to the fixed branch name (updates existing PR if open)
+        git push -f origin "$BRANCH_NAME"
+
+        # Check if a PR already exists for this branch
+        EXISTING_PR=$(curl -s \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/hdresearch/vers-docs/pulls?head=hdresearch:${BRANCH_NAME}&state=open" \
+          | python3 -c "import sys,json; prs=json.load(sys.stdin); print(prs[0]['number'] if prs else '')" 2>/dev/null || echo "")
+
+        if [ -n "$EXISTING_PR" ]; then
+          echo "✅ Updated existing PR #${EXISTING_PR}"
+          # Update PR body with version
+          curl -s -X PATCH \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/hdresearch/vers-docs/pulls/${EXISTING_PR}" \
+            -d "{
+              \"body\": \"Auto-generated by Sterling from the latest OpenAPI spec (v${VERSION}).\\n\\nUpdates:\\n- OpenAPI spec → \`api-reference/openapi.json\`\\n- SDK reference page → \`sdks.mdx\` (9 languages)\"
+            }" > /dev/null
         else
-          git commit -m "Update Chelsea API documentation"
-          git push origin "$BRANCH_NAME"
+          # Create new PR
           curl -s -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/hdresearch/vers-docs/pulls \
             -d "{
-              \"title\": \"Update Chelsea API documentation\",
-              \"body\": \"Auto-generated by Sterling from the latest OpenAPI spec.\",
+              \"title\": \"[Sterling] Update API docs & SDK reference (v${VERSION})\",
+              \"body\": \"Auto-generated by Sterling from the latest OpenAPI spec (v${VERSION}).\\n\\nUpdates:\\n- OpenAPI spec → \`api-reference/openapi.json\`\\n- SDK reference page → \`sdks.mdx\` (9 languages)\",
               \"head\": \"$BRANCH_NAME\",
               \"base\": \"main\"
             }"
+          echo "✅ Created new PR"
         fi
