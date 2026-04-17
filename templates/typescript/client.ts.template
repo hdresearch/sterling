@@ -39,7 +39,7 @@ export class {{class_name}}Client {
   /**
    * {{summary}}
    */
-  async {{operationId}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
+  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
 {{#if has_path_params}}
     const path = `{{path_interpolate_ts}}`;
 {{#if has_typed_response}}

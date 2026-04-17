@@ -124,6 +124,8 @@ pub const SDKGenerator = struct {
                         try c.putString("snake_name", try self.allocator.dupe(u8, toSnakeCaseStatic(op_id, &snake_buf)));
                         var pascal_buf: [256]u8 = undefined;
                         try c.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(op_id, &pascal_buf)));
+                        var camel_buf: [256]u8 = undefined;
+                        try c.putString("camel_name", try self.allocator.dupe(u8, toCamelCaseStatic(op_id, &camel_buf)));
 
                         // Path params
                         const has_path_params = std.mem.indexOfScalar(u8, path_str, '{') != null;
@@ -694,6 +696,27 @@ pub const SDKGenerator = struct {
         for (input) |c| {
             if (c == '_' or c == '-' or c == ' ') { cap = true; continue; }
             if (pos < 256) { buf[pos] = if (cap) std.ascii.toUpper(c) else c; pos += 1; cap = false; }
+        }
+        return buf[0..pos];
+    }
+
+    fn toCamelCaseStatic(input: []const u8, buf: *[256]u8) []const u8 {
+        var pos: usize = 0;
+        var cap = false;
+        var first = true;
+        for (input) |c| {
+            if (c == '_' or c == '-' or c == ' ') { cap = true; continue; }
+            if (first) {
+                // First character always lowercase
+                if (pos < 256) { buf[pos] = std.ascii.toLower(c); pos += 1; }
+                first = false;
+                cap = false;
+            } else if (cap) {
+                if (pos < 256) { buf[pos] = std.ascii.toUpper(c); pos += 1; }
+                cap = false;
+            } else {
+                if (pos < 256) { buf[pos] = c; pos += 1; }
+            }
         }
         return buf[0..pos];
     }

@@ -23,8 +23,8 @@ const client = new {{class_name}}Client({
 // Example usage
 {{#each operations}}
 // {{summary}}
-const {{snake_name}}Result = await client.{{operationId}}({{#if has_body}}{ /* request body */ }{{/if}});
-console.log({{snake_name}}Result.data);
+const {{camel_name}}Result = await client.{{camel_name}}({{#if has_body}}{ /* request body */ }{{/if}});
+console.log({{camel_name}}Result.data);
 
 {{/each}}
 ```
@@ -45,7 +45,7 @@ const client = new {{class_name}}Client({
 ## API Methods
 
 {{#each operations}}
-### `{{operationId}}()`
+### `{{camel_name}}()`
 
 {{summary}}
 
