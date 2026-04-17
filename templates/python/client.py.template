@@ -2,6 +2,7 @@
 # {{spec_title}} v{{spec_version}}
 
 import asyncio
+import logging
 import os
 import random
 from typing import Any, Optional
@@ -9,6 +10,29 @@ from typing import Any, Optional
 import httpx
 
 from .errors import APIError, APIConnectionError
+
+logger = logging.getLogger("vers_sdk")
+
+_LOG_LEVEL_MAP = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warn": logging.WARNING,
+    "error": logging.ERROR,
+    "off": logging.CRITICAL + 1,
+}
+
+
+def _configure_logger() -> None:
+    env_level = os.environ.get("VERS_LOG", "warn").lower()
+    level = _LOG_LEVEL_MAP.get(env_level, logging.WARNING)
+    logger.setLevel(level)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s [vers_sdk %(levelname)s] %(message)s"))
+        logger.addHandler(handler)
+
+
+_configure_logger()
 
 
 # Status codes that are retryable even though they are 4xx
@@ -66,12 +90,15 @@ class {{class_name}}Client:
         )
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        logger.debug("request: %s %s", method, path)
         last_exc: Optional[Exception] = None
         for attempt in range(self.max_retries + 1):
             if attempt > 0:
+                logger.info("retry attempt %d/%d for %s %s", attempt, self.max_retries, method, path)
                 await asyncio.sleep(_retry_delay(attempt - 1))
             try:
                 response = await self._client.request(method, path, **kwargs)
+                logger.debug("response: %d for %s %s", response.status_code, method, path)
                 if _is_retryable_status(response.status_code) and attempt < self.max_retries:
                     last_exc = Exception(f"HTTP {response.status_code}")
                     continue
@@ -80,6 +107,7 @@ class {{class_name}}Client:
             except APIError:
                 raise
             except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                logger.error("connection error: %s %s - %s", method, path, exc)
                 if attempt == self.max_retries:
                     raise APIConnectionError(cause=exc) from exc
                 last_exc = exc

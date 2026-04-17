@@ -5,12 +5,36 @@ use reqwest::Client as HttpClient;
 use crate::models::*;
 use std::time::Duration;
 
+/// Log level for the SDK client, matching VERS_LOG env var values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LogLevel {
+    Off = 0,
+    Error = 1,
+    Warn = 2,
+    Info = 3,
+    Debug = 4,
+}
+
+impl LogLevel {
+    fn from_env() -> Self {
+        match std::env::var("VERS_LOG").ok().as_deref() {
+            Some("debug") => LogLevel::Debug,
+            Some("info") => LogLevel::Info,
+            Some("warn") => LogLevel::Warn,
+            Some("error") => LogLevel::Error,
+            Some("off") => LogLevel::Off,
+            _ => LogLevel::Warn,
+        }
+    }
+}
+
 pub struct Client {
     http: HttpClient,
     base_url: String,
     api_key: Option<String>,
     max_retries: u32,
     timeout: Duration,
+    log_level: LogLevel,
 }
 
 impl Client {
@@ -28,7 +52,13 @@ impl Client {
             api_key: env_key,
             max_retries: 2,
             timeout: Duration::from_secs(30),
+            log_level: LogLevel::from_env(),
         }
+    }
+
+    pub fn with_log_level(mut self, level: LogLevel) -> Self {
+        self.log_level = level;
+        self
     }
 
     pub fn with_api_key(mut self, key: &str) -> Self {
@@ -68,9 +98,15 @@ impl Client {
 {{else}}
         let url = format!("{}{}", self.base_url, "{{path}}");
 {{/if}}
+        if self.log_level >= LogLevel::Debug {
+            log::debug!("request: {{method}} {}", url);
+        }
         let mut last_err: Option<reqwest::Error> = None;
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
+                if self.log_level >= LogLevel::Info {
+                    log::info!("retry attempt {}/{} for {{method}} {}", attempt, self.max_retries, url);
+                }
                 tokio::time::sleep(Self::retry_delay(attempt - 1)).await;
             }
             let mut req = self.http.{{method_lower}}(&url).timeout(self.timeout);
@@ -82,6 +118,9 @@ impl Client {
 {{/if}}
             match req.send().await {
                 Ok(resp) => {
+                    if self.log_level >= LogLevel::Debug {
+                        log::debug!("response: {} for {{method}} {}", resp.status().as_u16(), url);
+                    }
                     if !Self::is_retryable_status(resp.status().as_u16()) || attempt == self.max_retries {
 {{#if has_typed_response}}
                         return resp.json().await;
@@ -92,6 +131,9 @@ impl Client {
                     // retryable status, continue loop
                 }
                 Err(e) => {
+                    if self.log_level >= LogLevel::Error {
+                        log::error!("connection error: {{method}} {} - {}", url, e);
+                    }
                     if attempt == self.max_retries {
                         return Err(e);
                     }
