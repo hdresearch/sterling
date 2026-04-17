@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import random
+import uuid
 from typing import Any, Optional
 
 import httpx
@@ -95,6 +96,11 @@ class {{class_name}}Client:
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         logger.debug("request: %s %s", method, path)
+        if method.upper() in ("POST", "PUT", "PATCH", "DELETE"):
+            idempotency_key = str(uuid.uuid4())
+            headers = kwargs.pop("headers", {})
+            headers["X-Idempotency-Key"] = idempotency_key
+            kwargs["headers"] = headers
         last_exc: Optional[Exception] = None
         for attempt in range(self.max_retries + 1):
             if attempt > 0:

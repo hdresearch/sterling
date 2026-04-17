@@ -115,6 +115,15 @@ impl Client {
         if self.log_level >= LogLevel::Debug {
             log::debug!("request: {{method}} {}", url);
         }
+        let idempotency_key = {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let jitter = (rand_jitter() * 1_000_000_000.0) as u64;
+            format!("{:x}-{:x}", ts, jitter)
+        };
+        let is_mutating = matches!("{{method}}", "POST" | "PUT" | "PATCH" | "DELETE");
         let mut last_err: Option<reqwest::Error> = None;
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
@@ -131,6 +140,9 @@ impl Client {
             ));
             if let Some(ref token) = self.auth_header() {
                 req = req.header("Authorization", token);
+            }
+            if is_mutating {
+                req = req.header("X-Idempotency-Key", &idempotency_key);
             }
 {{#if has_body}}
             req = req.json(body);

@@ -107,6 +107,11 @@ export class {{class_name}}Client {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
+    const mutating = ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
+    if (mutating) {
+      headers["X-Idempotency-Key"] = crypto.randomUUID();
+    }
+
     this.log('debug', `request: ${method} ${path}`);
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {

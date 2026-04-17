@@ -5,12 +5,13 @@ package {{go_package_name}}
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"math"
-	"math/rand"
+	mrand "math/rand"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -69,7 +70,7 @@ func isRetryableStatus(code int) bool {
 
 func retryDelay(attempt int) time.Duration {
 	baseMs := 500.0 * math.Pow(2, float64(attempt))
-	jitterMs := rand.Float64() * baseMs * 0.25
+	jitterMs := mrand.Float64() * baseMs * 0.25
 	return time.Duration(baseMs+jitterMs) * time.Millisecond
 }
 
@@ -102,8 +103,26 @@ func (c *Client) logf(level LogLevel, format string, args ...interface{}) {
 	}
 }
 
+func isMutatingMethod(method string) bool {
+	switch strings.ToUpper(method) {
+	case "POST", "PUT", "PATCH", "DELETE":
+		return true
+	}
+	return false
+}
+
+func generateIdempotencyKey() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
 func (c *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
 	c.logf(LogDebug, "request: %s %s", method, path)
+	idempotencyKey := ""
+	if isMutatingMethod(method) {
+		idempotencyKey = generateIdempotencyKey()
+	}
 	var lastErr error
 	for attempt := 0; attempt <= c.MaxRetries; attempt++ {
 		if attempt > 0 {
@@ -127,6 +146,9 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 		req.Header.Set("User-Agent", fmt.Sprintf("{{package_name}}/{{project_version}} go/%s %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH))
 		if c.APIKey != "" {
 			req.Header.Set("Authorization", "Bearer "+c.APIKey)
+		}
+		if idempotencyKey != "" {
+			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
 
 		client := c.HTTPClient
