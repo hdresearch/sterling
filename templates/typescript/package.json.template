@@ -4,11 +4,22 @@
   "description": "SDK for {{spec_title}}",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "tsc",
     "test": "npx tsx tests/client.test.ts"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hdresearch/ts-sdk.git"
+  },
+  "homepage": "https://github.com/hdresearch/ts-sdk",
+  "keywords": ["vers", "sdk", "api", "vm", "orchestration"],
   "dependencies": {
     "ssh2": "^1.16.0"
   },
