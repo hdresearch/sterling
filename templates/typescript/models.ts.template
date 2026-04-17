@@ -45,6 +45,24 @@ export interface {{name}} {
 {{/each}}
 }
 
+{{#if has_nested_types}}
+export namespace {{name}} {
+{{#each nested_types}}
+{{#if description}}
+  /** {{description}} */
+{{/if}}
+  export interface {{nested_name}} {
+{{#each fields}}
+{{#if description}}
+    /** {{description}} */
+{{/if}}
+    {{name}}{{#unless required}}?{{/unless}}: {{ts_type}};
+{{/each}}
+  }
+{{/each}}
+}
+
+{{/if}}
 {{/if}}
 {{/if}}
 {{/each}}

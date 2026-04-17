@@ -108,6 +108,10 @@ pub const SchemaProperty = struct {
     /// For array items
     items_ref: ?[]const u8 = null,
     items_type: ?[]const u8 = null,
+    /// For inline nested object definitions (stored as slices to avoid comptime issues)
+    nested_properties: []SchemaProperty = &.{},
+    nested_required_fields: []const []const u8 = &.{},
+    is_nested_object: bool = false,
 };
 
 /// Represents one variant of a oneOf union type.
@@ -597,6 +601,66 @@ fn parseSchema(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !Schema {
                             if (items.object.get("type")) |t| {
                                 if (t == .string) prop.items_type = try allocator.dupe(u8, t.string);
                             }
+                        }
+                    }
+                    // Detect inline nested object definitions
+                    if (pobj.get("properties")) |nested_props_val| {
+                        if (nested_props_val == .object) {
+                            prop.is_nested_object = true;
+                            // Parse nested required fields
+                            var nreq_list = std.ArrayListUnmanaged([]const u8){};
+                            if (pobj.get("required")) |nreq| {
+                                if (nreq == .array) {
+                                    for (nreq.array.items) |nitem| {
+                                        if (nitem == .string) {
+                                            try nreq_list.append(allocator, try allocator.dupe(u8, nitem.string));
+                                        }
+                                    }
+                                }
+                            }
+                            prop.nested_required_fields = try nreq_list.toOwnedSlice(allocator);
+                            // Parse nested properties
+                            var nprop_list = std.ArrayListUnmanaged(SchemaProperty){};
+                            var nprop_iter = nested_props_val.object.iterator();
+                            while (nprop_iter.next()) |nentry| {
+                                var nprop = SchemaProperty{
+                                    .name = try allocator.dupe(u8, nentry.key_ptr.*),
+                                };
+                                // Check if nested field is required
+                                for (prop.nested_required_fields) |req_name| {
+                                    if (std.mem.eql(u8, req_name, nentry.key_ptr.*)) {
+                                        nprop.required = true;
+                                        break;
+                                    }
+                                }
+                                if (nentry.value_ptr.* == .object) {
+                                    const npobj = nentry.value_ptr.object;
+                                    if (npobj.get("type")) |nt| {
+                                        // Handle type arrays like ["integer", "null"]
+                                        if (nt == .string) {
+                                            nprop.type_name = try allocator.dupe(u8, nt.string);
+                                        } else if (nt == .array) {
+                                            for (nt.array.items) |type_item| {
+                                                if (type_item == .string and !std.mem.eql(u8, type_item.string, "null")) {
+                                                    nprop.type_name = try allocator.dupe(u8, type_item.string);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (npobj.get("format")) |nf| {
+                                        if (nf == .string) nprop.format = try allocator.dupe(u8, nf.string);
+                                    }
+                                    if (npobj.get("description")) |nd| {
+                                        if (nd == .string) nprop.description = try allocator.dupe(u8, nd.string);
+                                    }
+                                    if (npobj.get("$ref")) |nr| {
+                                        if (nr == .string) nprop.ref = try allocator.dupe(u8, extractRefName(nr.string));
+                                    }
+                                }
+                                try nprop_list.append(allocator, nprop);
+                            }
+                            prop.nested_properties = try nprop_list.toOwnedSlice(allocator);
                         }
                     }
                 }

@@ -49,6 +49,29 @@ pub struct {{name}} {
 {{/each}}
 }
 
+{{#if has_nested_types}}
+pub mod {{snake_name}} {
+    use serde::{Deserialize, Serialize};
+
+{{#each nested_types}}
+{{#if description}}
+    /// {{description}}
+{{/if}}
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct {{nested_name}} {
+{{#each fields}}
+{{#if description}}
+        /// {{description}}
+{{/if}}
+        {{#unless required}}#[serde(skip_serializing_if = "Option::is_none")]
+        {{/unless}}#[serde(rename = "{{name}}")]
+        pub {{rust_name}}: {{#if required}}{{rust_type}}{{else}}Option<{{rust_type}}>{{/if}},
+{{/each}}
+    }
+{{/each}}
+}
+
+{{/if}}
 {{else}}
 /// {{description}}
 #[derive(Debug, Clone, Serialize, Deserialize)]
