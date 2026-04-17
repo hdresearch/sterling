@@ -415,11 +415,12 @@ def patch_docs_json(docs_dir: Path):
 
 
 def fix_stale_imports(docs_dir: Path):
-    """Fix old Stainless SDK import patterns."""
+    """Fix old Stainless SDK import patterns and known typos."""
     replacements = [
         ("from 'vers';", "from 'vers-sdk';"),
         ('from "vers";', 'from "vers-sdk";'),
         ("import Vers, { withSSH }", "import { VersSdkClient }"),
+        ("fs_size_vm_mib", "fs_size_mib"),
     ]
     for mdx in docs_dir.rglob("*.mdx"):
         content = mdx.read_text()
