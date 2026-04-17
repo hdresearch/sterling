@@ -170,6 +170,13 @@ pub const SDKGenerator = struct {
                             try c.putString("path_interpolate_rust", param_names.rust_interpolate);
                             try c.putString("go_format_args", param_names.go_format_args);
                             try c.putString("rust_format_args", param_names.rust_format_args);
+                            // New language path params
+                            try c.putString("path_params_java", param_names.java_params);
+                            try c.putString("path_params_kotlin", param_names.kotlin_params);
+                            try c.putString("path_params_php", param_names.php_params);
+                            try c.putString("path_params_csharp", param_names.csharp_params);
+                            try c.putString("path_interpolate_csharp", param_names.csharp_interpolate);
+                            try c.putString("php_format_args", param_names.php_format_args);
                         }
 
                         // Body
@@ -290,6 +297,13 @@ pub const SDKGenerator = struct {
         rust_interpolate: []const u8,
         go_format_args: []const u8,
         rust_format_args: []const u8,
+        // New languages
+        java_params: []const u8,
+        kotlin_params: []const u8,
+        php_params: []const u8,
+        csharp_params: []const u8,
+        csharp_interpolate: []const u8,
+        php_format_args: []const u8,
     };
 
     fn extractPathParamNames(self: *SDKGenerator, path: []const u8) !PathParamInfo {
@@ -298,12 +312,18 @@ pub const SDKGenerator = struct {
         var py_params = std.array_list.Managed(u8).init(self.allocator);
         var go_params = std.array_list.Managed(u8).init(self.allocator);
         var rust_params = std.array_list.Managed(u8).init(self.allocator);
+        var java_params = std.array_list.Managed(u8).init(self.allocator);
+        var kotlin_params = std.array_list.Managed(u8).init(self.allocator);
+        var php_params = std.array_list.Managed(u8).init(self.allocator);
+        var csharp_params = std.array_list.Managed(u8).init(self.allocator);
         var ts_interp = std.array_list.Managed(u8).init(self.allocator);
         var py_interp = std.array_list.Managed(u8).init(self.allocator);
         var go_interp = std.array_list.Managed(u8).init(self.allocator);
         var rust_interp = std.array_list.Managed(u8).init(self.allocator);
+        var csharp_interp = std.array_list.Managed(u8).init(self.allocator);
         var go_fmt_args = std.array_list.Managed(u8).init(self.allocator);
         var rust_fmt_args = std.array_list.Managed(u8).init(self.allocator);
+        var php_fmt_args = std.array_list.Managed(u8).init(self.allocator);
 
         // Build interpolated path and param lists
         var i: usize = 0;
@@ -319,6 +339,10 @@ pub const SDKGenerator = struct {
                     try py_params.appendSlice(", ");
                     try go_params.appendSlice(", ");
                     try rust_params.appendSlice(", ");
+                    try java_params.appendSlice(", ");
+                    try kotlin_params.appendSlice(", ");
+                    try php_params.appendSlice(", ");
+                    try csharp_params.appendSlice(", ");
                 }
                 // TS: name: string
                 try ts_params.appendSlice(name);
@@ -334,6 +358,18 @@ pub const SDKGenerator = struct {
                 // Rust: name: &str
                 try rust_params.appendSlice(name);
                 try rust_params.appendSlice(": &str");
+                // Java: String name
+                try java_params.appendSlice("String ");
+                try java_params.appendSlice(name);
+                // Kotlin: name: String
+                try kotlin_params.appendSlice(name);
+                try kotlin_params.appendSlice(": String");
+                // PHP: string $name
+                try php_params.appendSlice("string $");
+                try php_params.appendSlice(name);
+                // C#: string name
+                try csharp_params.appendSlice("string ");
+                try csharp_params.appendSlice(name);
 
                 // Interpolation patterns
                 try ts_interp.appendSlice("${");
@@ -350,13 +386,21 @@ pub const SDKGenerator = struct {
                 // Rust: use format!
                 try rust_interp.appendSlice("{}");
 
-                // Format arguments for Go and Rust
+                // C#: use string interpolation {name}
+                try csharp_interp.append('{');
+                try csharp_interp.appendSlice(name);
+                try csharp_interp.append('}');
+
+                // Format arguments for Go, Rust, PHP
                 if (param_count > 0) {
                     try go_fmt_args.appendSlice(", ");
                     try rust_fmt_args.appendSlice(", ");
+                    try php_fmt_args.appendSlice(", ");
                 }
                 try go_fmt_args.appendSlice(name);
                 try rust_fmt_args.appendSlice(name);
+                try php_fmt_args.appendSlice("$");
+                try php_fmt_args.appendSlice(name);
 
                 param_count += 1;
                 i = end + 1;
@@ -365,6 +409,7 @@ pub const SDKGenerator = struct {
                 try py_interp.append(path[i]);
                 try go_interp.append(path[i]);
                 try rust_interp.append(path[i]);
+                try csharp_interp.append(path[i]);
                 i += 1;
             }
         }
@@ -381,6 +426,12 @@ pub const SDKGenerator = struct {
             .rust_interpolate = try rust_interp.toOwnedSlice(),
             .go_format_args = try go_fmt_args.toOwnedSlice(),
             .rust_format_args = try rust_fmt_args.toOwnedSlice(),
+            .java_params = try java_params.toOwnedSlice(),
+            .kotlin_params = try kotlin_params.toOwnedSlice(),
+            .php_params = try php_params.toOwnedSlice(),
+            .csharp_params = try csharp_params.toOwnedSlice(),
+            .csharp_interpolate = try csharp_interp.toOwnedSlice(),
+            .php_format_args = try php_fmt_args.toOwnedSlice(),
         };
     }
 
