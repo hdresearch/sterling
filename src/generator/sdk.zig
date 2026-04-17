@@ -239,6 +239,12 @@ pub const SDKGenerator = struct {
                         // Rust fn_params
                         try c.putString("fn_params", try self.buildRustFnParams(has_path_params, has_body, has_query_params, op));
 
+                        // Test call arguments for each language
+                        try c.putString("test_args_ts", try self.buildTestArgsTS(path_str, has_body));
+                        try c.putString("test_args_py", try self.buildTestArgsPy(path_str, has_body));
+                        try c.putString("test_args_go", try self.buildTestArgsGo(path_str, has_body));
+                        try c.putString("test_args_rust", try self.buildTestArgsRust(path_str, has_body));
+
                         ops[idx] = c;
                         idx += 1;
                     }
