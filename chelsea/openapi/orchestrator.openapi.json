@@ -3875,51 +3875,7 @@
         ],
         "properties": {
           "vm_config": {
-            "type": "object",
-            "description": "Struct representing configuration options common to all VMs",
-            "properties": {
-              "fs_size_mib": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "format": "int32",
-                "description": "The disk size, in MiB.",
-                "minimum": 0
-              },
-              "image_name": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "The filesystem base image name. Currently, must be 'default'"
-              },
-              "kernel_name": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "The kernel name. Currently, must be 'default.bin'"
-              },
-              "mem_size_mib": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "format": "int32",
-                "description": "The RAM size, in MiB.",
-                "minimum": 0
-              },
-              "vcpu_count": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "format": "int32",
-                "description": "How many vCPUs to allocate to this VM (and its children)",
-                "minimum": 0
-              }
-            }
+            "$ref": "#/components/schemas/VmCreateVmConfig"
           }
         }
       },
@@ -4079,7 +4035,7 @@
       },
       "SetEnvVarsRequest": {
         "type": "object",
-        "description": "Request body for PUT /env_vars \u2014 sets (upserts) one or more environment variables.\n\n# Lifecycle model\n\nEnvironment variables are written to `/etc/environment` inside a VM **once\nat boot time** via a vsock `WriteFile` request. They are **not** live-synced\nto running VMs. This is intentional: VMs are ephemeral (create \u2192 use \u2192\ndestroy/branch), so env var changes naturally take effect on the next VM.\n\nThe `replace` flag exists so callers can atomically express \"I want exactly\nthese variables and nothing else\" without having to DELETE each stale key\nindividually. Without it, the only way to remove a variable from future VMs\nis a separate `DELETE /env_vars/{key}` call per key.",
+        "description": "Request body for PUT /env_vars — sets (upserts) one or more environment variables.\n\n# Lifecycle model\n\nEnvironment variables are written to `/etc/environment` inside a VM **once\nat boot time** via a vsock `WriteFile` request. They are **not** live-synced\nto running VMs. This is intentional: VMs are ephemeral (create → use →\ndestroy/branch), so env var changes naturally take effect on the next VM.\n\nThe `replace` flag exists so callers can atomically express \"I want exactly\nthese variables and nothing else\" without having to DELETE each stale key\nindividually. Without it, the only way to remove a variable from future VMs\nis a separate `DELETE /env_vars/{key}` call per key.",
         "required": [
           "vars"
         ],
@@ -4192,7 +4148,7 @@
       },
       "UpdateTagRequest": {
         "type": "object",
-        "description": "Request body for PATCH /api/v1/commit_tags/{tag_name}\n\nFor `description`:\n- Field absent from JSON \u2192 don't change the description\n- Field present as `null` \u2192 clear the description\n- Field present as `\"text\"` \u2192 set the description to \"text\"",
+        "description": "Request body for PATCH /api/v1/commit_tags/{tag_name}\n\nFor `description`:\n- Field absent from JSON → don't change the description\n- Field present as `null` → clear the description\n- Field present as `\"text\"` → set the description to \"text\"",
         "properties": {
           "commit_id": {
             "type": [
@@ -4302,6 +4258,53 @@
             "type": "string",
             "format": "uuid",
             "description": "The UUID of the newly-created commit"
+          }
+        }
+      },
+      "VmCreateVmConfig": {
+        "type": "object",
+        "description": "Struct representing configuration options common to all VMs",
+        "properties": {
+          "fs_size_mib": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The disk size, in MiB.",
+            "minimum": 0
+          },
+          "image_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The filesystem base image name. Currently, must be 'default'"
+          },
+          "kernel_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The kernel name. Currently, must be 'default.bin'"
+          },
+          "mem_size_mib": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The RAM size, in MiB.",
+            "minimum": 0
+          },
+          "vcpu_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How many vCPUs to allocate to this VM (and its children)",
+            "minimum": 0
           }
         }
       },
