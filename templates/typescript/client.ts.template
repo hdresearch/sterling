@@ -7,17 +7,38 @@ export interface {{class_name}}ClientOptions {
   baseUrl?: string;
   apiKey?: string;
   headers?: Record<string, string>;
+  /** Maximum number of retries on 5xx/network errors. Default: 2 */
+  maxRetries?: number;
+  /** Request timeout in milliseconds. Default: 30000 */
+  timeout?: number;
+}
+
+// Status codes that are retryable even though they are 4xx
+const RETRYABLE_STATUS_CODES = new Set([408, 409, 429]);
+
+function isRetryableStatus(status: number): boolean {
+  return status >= 500 || RETRYABLE_STATUS_CODES.has(status);
+}
+
+function retryDelay(retryCount: number): number {
+  const base = 500 * Math.pow(2, retryCount);
+  const jitter = Math.random() * base * 0.25;
+  return base + jitter;
 }
 
 export class {{class_name}}Client {
   private baseUrl: string;
   private apiKey?: string;
   private headers: Record<string, string>;
+  private maxRetries: number;
+  private timeout: number;
 
   constructor(options: {{class_name}}ClientOptions = {}) {
-    this.baseUrl = options.baseUrl ?? "{{base_url}}";
-    this.apiKey = options.apiKey;
+    this.baseUrl = options.baseUrl ?? process.env["VERS_BASE_URL"] ?? "{{base_url}}";
+    this.apiKey = options.apiKey ?? process.env["VERS_API_KEY"];
     this.headers = options.headers ?? {};
+    this.maxRetries = options.maxRetries ?? 2;
+    this.timeout = options.timeout ?? 30000;
   }
 
   private async request(method: string, path: string, body?: unknown): Promise<Response> {
@@ -28,11 +49,39 @@ export class {{class_name}}Client {
     if (this.apiKey) {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
-    return fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt - 1)));
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      try {
+        const response = await fetch(`${this.baseUrl}${path}`, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        });
+
+        if (!isRetryableStatus(response.status) || attempt === this.maxRetries) {
+          return response;
+        }
+        lastError = new Error(`HTTP ${response.status}`);
+      } catch (error) {
+        lastError = error;
+        if (attempt === this.maxRetries) {
+          throw error;
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    throw lastError;
   }
 
 {{#each operations}}

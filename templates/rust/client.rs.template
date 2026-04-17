@@ -3,19 +3,31 @@
 
 use reqwest::Client as HttpClient;
 use crate::models::*;
+use std::time::Duration;
 
 pub struct Client {
     http: HttpClient,
     base_url: String,
     api_key: Option<String>,
+    max_retries: u32,
+    timeout: Duration,
 }
 
 impl Client {
     pub fn new(base_url: &str) -> Self {
+        let env_base = std::env::var("VERS_BASE_URL").ok();
+        let env_key = std::env::var("VERS_API_KEY").ok();
+        let actual_base = if base_url.is_empty() {
+            env_base.unwrap_or_else(|| base_url.to_string())
+        } else {
+            base_url.to_string()
+        };
         Self {
             http: HttpClient::new(),
-            base_url: base_url.to_string(),
-            api_key: None,
+            base_url: actual_base,
+            api_key: env_key,
+            max_retries: 2,
+            timeout: Duration::from_secs(30),
         }
     }
 
@@ -24,8 +36,28 @@ impl Client {
         self
     }
 
+    pub fn with_max_retries(mut self, retries: u32) -> Self {
+        self.max_retries = retries;
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
     fn auth_header(&self) -> Option<String> {
         self.api_key.as_ref().map(|k| format!("Bearer {}", k))
+    }
+
+    fn is_retryable_status(status: u16) -> bool {
+        status >= 500 || status == 408 || status == 409 || status == 429
+    }
+
+    fn retry_delay(attempt: u32) -> Duration {
+        let base_ms = 500u64 * 2u64.pow(attempt);
+        let jitter_ms = (base_ms as f64 * 0.25 * rand_jitter()) as u64;
+        Duration::from_millis(base_ms + jitter_ms)
     }
 
 {{#each operations}}
@@ -36,19 +68,48 @@ impl Client {
 {{else}}
         let url = format!("{}{}", self.base_url, "{{path}}");
 {{/if}}
-        let mut req = self.http.{{method_lower}}(&url);
-        if let Some(ref token) = self.auth_header() {
-            req = req.header("Authorization", token);
-        }
+        let mut last_err: Option<reqwest::Error> = None;
+        for attempt in 0..=self.max_retries {
+            if attempt > 0 {
+                tokio::time::sleep(Self::retry_delay(attempt - 1)).await;
+            }
+            let mut req = self.http.{{method_lower}}(&url).timeout(self.timeout);
+            if let Some(ref token) = self.auth_header() {
+                req = req.header("Authorization", token);
+            }
 {{#if has_body}}
-        req = req.json(body);
+            req = req.json(body);
 {{/if}}
+            match req.send().await {
+                Ok(resp) => {
+                    if !Self::is_retryable_status(resp.status().as_u16()) || attempt == self.max_retries {
 {{#if has_typed_response}}
-        req.send().await?.json().await
+                        return resp.json().await;
 {{else}}
-        req.send().await
+                        return Ok(resp);
 {{/if}}
+                    }
+                    // retryable status, continue loop
+                }
+                Err(e) => {
+                    if attempt == self.max_retries {
+                        return Err(e);
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(last_err.unwrap())
     }
 
 {{/each}}
+}
+
+/// Simple jitter factor between 0.0 and 1.0 using basic time-based seed
+fn rand_jitter() -> f64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos();
+    (nanos % 1000) as f64 / 1000.0
 }
