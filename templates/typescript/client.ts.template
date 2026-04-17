@@ -3,6 +3,8 @@
 
 import type { {{#each models}}{{#unless is_enum}}{{name}}, {{/unless}}{{#if is_enum}}{{name}}, {{/if}}{{/each}} } from "./models";
 import { APIError, APIConnectionError } from "./errors";
+import { SSHClient } from "./lib/ssh";
+import type { SSHOptions, SSHConnectionInfo } from "./lib/ssh";
 
 export interface {{class_name}}ClientOptions {
   baseUrl?: string;
@@ -125,4 +127,23 @@ export class {{class_name}}Client {
   }
 
 {{/each}}
+
+  /**
+   * Connect to a VM via SSH-over-TLS.
+   *
+   * Fetches the SSH key and connection info from the API, then returns
+   * an SSHClient ready to execute commands, open shells, or transfer files.
+   */
+  async ssh(vmId: string, options: SSHOptions = {}): Promise<SSHClient> {
+    const keyInfo = await this.sshKey(vmId);
+    // Derive hostname from the API base URL
+    const url = new URL(this.baseUrl);
+    const connectionInfo: SSHConnectionInfo = {
+      vmId,
+      privateKey: keyInfo.ssh_private_key,
+      hostname: url.hostname,
+      port: keyInfo.ssh_port,
+    };
+    return new SSHClient(connectionInfo, options);
+  }
 }
