@@ -14,7 +14,6 @@ namespace VersSdk
     public enum {{name}}
     {
 {{#each enum_values}}
-        [JsonStringEnumMemberName("{{value}}")]
         {{pascal_value}}{{#unless is_last}},{{/unless}}
 {{/each}}
     }
