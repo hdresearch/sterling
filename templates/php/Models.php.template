@@ -80,9 +80,12 @@ class {{name}}
 {{#each properties}}
 {{#if required}}
         {{php_type}} ${{name}},
-{{else}}
-        {{php_type}}|null ${{name}} = null,
 {{/if}}
+{{/each}}
+{{#each properties}}
+{{#unless required}}
+        {{php_type}}|null ${{name}} = null,
+{{/unless}}
 {{/each}}
     ) {
 {{#each properties}}
