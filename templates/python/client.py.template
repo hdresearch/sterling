@@ -80,24 +80,28 @@ class {{class_name}}Client:
         headers: Optional[dict[str, str | None]] = None,
         max_retries: int = 2,
         timeout: float = 30.0,
+        http_client: Optional[httpx.AsyncClient] = None,
     ):
         self.base_url = base_url or os.environ.get("VERS_BASE_URL", "{{base_url}}")
         self.api_key = api_key or os.environ.get("VERS_API_KEY")
         self.max_retries = max_retries
         self.timeout = timeout
         self._custom_headers: dict[str, str | None] = headers or {}
-        import platform as _platform
-        default_headers: dict[str, str] = {
-            "User-Agent": f"{{package_name}}/{{project_version}} python/{_platform.python_version()} {_platform.system().lower()}/{_platform.machine()}",
-        }
-        if self.api_key:
-            default_headers["Authorization"] = f"Bearer {self.api_key}"
-        merged = self._merge_headers(default_headers, self._custom_headers)
-        self._client = httpx.AsyncClient(
-            base_url=self.base_url,
-            headers=merged,
-            timeout=self.timeout,
-        )
+        if http_client is not None:
+            self._client = http_client
+        else:
+            import platform as _platform
+            default_headers: dict[str, str] = {
+                "User-Agent": f"{{package_name}}/{{project_version}} python/{_platform.python_version()} {_platform.system().lower()}/{_platform.machine()}",
+            }
+            if self.api_key:
+                default_headers["Authorization"] = f"Bearer {self.api_key}"
+            merged = self._merge_headers(default_headers, self._custom_headers)
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                headers=merged,
+                timeout=self.timeout,
+            )
 
     @staticmethod
     def _merge_headers(*sources: Optional[dict[str, str | None]]) -> dict[str, str]:
