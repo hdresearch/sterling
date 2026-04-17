@@ -4,6 +4,9 @@
 export { {{class_name}}Client } from "./client";
 export type { {{class_name}}ClientOptions } from "./client";
 export * from "./models";
+{{#each resources}}
+export { {{resource_class}} } from "{{import_path}}";
+{{/each}}
 export {
   VersSDKError,
   APIError,

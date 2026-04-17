@@ -155,6 +155,7 @@ pub const SDKGenerator = struct {
                         if (has_path_params) {
                             const param_names = try self.extractPathParamNames(path_str);
                             try c.putString("path_params_ts", param_names.ts_params);
+                            try c.putString("path_params_ts_args", param_names.ts_args);
                             try c.putString("path_params_py", param_names.py_params);
                             try c.putString("path_params_go", param_names.go_params);
                             try c.putString("path_params_rust", param_names.rust_params);
@@ -231,6 +232,7 @@ pub const SDKGenerator = struct {
                             try c.putList("query_params", @ptrCast(qp_slice));
                             // Build per-language param strings for function signatures
                             try c.putString("query_params_ts", try self.buildQueryParamStringTS(op));
+                            try c.putString("query_params_ts_args", try self.buildQueryParamArgsTS(op));
                             try c.putString("query_params_py", try self.buildQueryParamStringPython(op));
                             try c.putString("query_params_go", try self.buildQueryParamStringGo(op));
                             try c.putString("query_params_rust", try self.buildQueryParamStringRust(op));
@@ -250,6 +252,7 @@ pub const SDKGenerator = struct {
 
     const PathParamInfo = struct {
         ts_params: []const u8,
+        ts_args: []const u8,
         py_params: []const u8,
         go_params: []const u8,
         rust_params: []const u8,
@@ -263,6 +266,7 @@ pub const SDKGenerator = struct {
 
     fn extractPathParamNames(self: *SDKGenerator, path: []const u8) !PathParamInfo {
         var ts_params = std.array_list.Managed(u8).init(self.allocator);
+        var ts_args = std.array_list.Managed(u8).init(self.allocator);
         var py_params = std.array_list.Managed(u8).init(self.allocator);
         var go_params = std.array_list.Managed(u8).init(self.allocator);
         var rust_params = std.array_list.Managed(u8).init(self.allocator);
@@ -283,6 +287,7 @@ pub const SDKGenerator = struct {
 
                 if (param_count > 0) {
                     try ts_params.appendSlice(", ");
+                    try ts_args.appendSlice(", ");
                     try py_params.appendSlice(", ");
                     try go_params.appendSlice(", ");
                     try rust_params.appendSlice(", ");
@@ -290,6 +295,8 @@ pub const SDKGenerator = struct {
                 // TS: name: string
                 try ts_params.appendSlice(name);
                 try ts_params.appendSlice(": string");
+                // TS args (names only)
+                try ts_args.appendSlice(name);
                 // Python: name: str
                 try py_params.appendSlice(name);
                 try py_params.appendSlice(": str");
@@ -336,6 +343,7 @@ pub const SDKGenerator = struct {
 
         return .{
             .ts_params = try ts_params.toOwnedSlice(),
+            .ts_args = try ts_args.toOwnedSlice(),
             .py_params = try py_params.toOwnedSlice(),
             .go_params = try go_params.toOwnedSlice(),
             .rust_params = try rust_params.toOwnedSlice(),
@@ -451,6 +459,19 @@ pub const SDKGenerator = struct {
                 try buf.appendSlice(param.name);
                 try buf.appendSlice("?: ");
                 try buf.appendSlice(self.queryParamTypeTS(param.schema_type orelse "string"));
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildQueryParamArgsTS(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(param.name);
             }
         }
         return try buf.toOwnedSlice();
@@ -757,6 +778,115 @@ pub const SDKGenerator = struct {
         return "interface{}";
     }
 
+    // ── Resource grouping for TypeScript ─────────────────────────────────
+
+    fn pathToResourceName(_: *SDKGenerator, path_str: []const u8) []const u8 {
+        // Extract first segment after /api/v1/
+        const prefix = "/api/v1/";
+        if (!std.mem.startsWith(u8, path_str, prefix)) return "misc";
+        const rest = path_str[prefix.len..];
+        // Find end of first segment
+        const slash_pos = std.mem.indexOfScalar(u8, rest, '/') orelse rest.len;
+        const segment = rest[0..slash_pos];
+
+        // Map segments to resource names
+        if (std.mem.eql(u8, segment, "vm") or std.mem.eql(u8, segment, "vms")) return "vm";
+        if (std.mem.eql(u8, segment, "repositories")) return "repositories";
+        if (std.mem.eql(u8, segment, "commits")) return "commits";
+        if (std.mem.eql(u8, segment, "commit_tags")) return "commitTags";
+        if (std.mem.eql(u8, segment, "domains")) return "domains";
+        if (std.mem.eql(u8, segment, "env_vars")) return "envVars";
+        if (std.mem.eql(u8, segment, "public")) return "publicRepositories";
+        return "misc";
+    }
+
+    fn resourceNameToClassName(_: *SDKGenerator, name: []const u8) []const u8 {
+        if (std.mem.eql(u8, name, "vm")) return "VmResource";
+        if (std.mem.eql(u8, name, "repositories")) return "RepositoriesResource";
+        if (std.mem.eql(u8, name, "commits")) return "CommitsResource";
+        if (std.mem.eql(u8, name, "commitTags")) return "CommitTagsResource";
+        if (std.mem.eql(u8, name, "domains")) return "DomainsResource";
+        if (std.mem.eql(u8, name, "envVars")) return "EnvVarsResource";
+        if (std.mem.eql(u8, name, "publicRepositories")) return "PublicRepositoriesResource";
+        return "MiscResource";
+    }
+
+    fn resourceNameToFileName(_: *SDKGenerator, name: []const u8) []const u8 {
+        if (std.mem.eql(u8, name, "vm")) return "vm.ts";
+        if (std.mem.eql(u8, name, "repositories")) return "repositories.ts";
+        if (std.mem.eql(u8, name, "commits")) return "commits.ts";
+        if (std.mem.eql(u8, name, "commitTags")) return "commit-tags.ts";
+        if (std.mem.eql(u8, name, "domains")) return "domains.ts";
+        if (std.mem.eql(u8, name, "envVars")) return "env-vars.ts";
+        if (std.mem.eql(u8, name, "publicRepositories")) return "public-repositories.ts";
+        return "misc.ts";
+    }
+
+    fn resourceNameToImportPath(_: *SDKGenerator, name: []const u8) []const u8 {
+        if (std.mem.eql(u8, name, "vm")) return "./resources/vm";
+        if (std.mem.eql(u8, name, "repositories")) return "./resources/repositories";
+        if (std.mem.eql(u8, name, "commits")) return "./resources/commits";
+        if (std.mem.eql(u8, name, "commitTags")) return "./resources/commit-tags";
+        if (std.mem.eql(u8, name, "domains")) return "./resources/domains";
+        if (std.mem.eql(u8, name, "envVars")) return "./resources/env-vars";
+        if (std.mem.eql(u8, name, "publicRepositories")) return "./resources/public-repositories";
+        return "./resources/misc";
+    }
+
+    fn buildResourceContexts(self: *SDKGenerator, base_ctx: *template.Context, ops: []const *template.Context) ![]const *template.Context {
+        // Collect unique resource names preserving insertion order
+        const resource_names = [_][]const u8{ "vm", "repositories", "commits", "commitTags", "domains", "envVars", "publicRepositories" };
+
+        // Count how many resources actually have operations
+        var active_count: usize = 0;
+        for (&resource_names) |rn| {
+            for (ops) |op| {
+                const path_str = op.getString("path") orelse continue;
+                if (std.mem.eql(u8, self.pathToResourceName(path_str), rn)) {
+                    active_count += 1;
+                    break;
+                }
+            }
+        }
+
+        var result = try self.allocator.alloc(*template.Context, active_count);
+        var idx: usize = 0;
+
+        for (&resource_names) |rn| {
+            // Collect ops for this resource
+            var res_ops = std.array_list.Managed(*template.Context).init(self.allocator);
+            for (ops) |op| {
+                const path_str = op.getString("path") orelse continue;
+                if (std.mem.eql(u8, self.pathToResourceName(path_str), rn)) {
+                    try res_ops.append(@constCast(op));
+                }
+            }
+            if (res_ops.items.len == 0) continue;
+
+            const rc = try self.allocator.create(template.Context);
+            rc.* = template.Context.init(self.allocator);
+            rc.parent = base_ctx;
+
+            try rc.putString("resource_name", rn);
+            try rc.putString("resource_class", self.resourceNameToClassName(rn));
+            try rc.putString("file_name", self.resourceNameToFileName(rn));
+            try rc.putString("import_path", self.resourceNameToImportPath(rn));
+            // import_name: file_name without .ts extension for re-exports
+            const fname = self.resourceNameToFileName(rn);
+            if (std.mem.endsWith(u8, fname, ".ts")) {
+                try rc.putString("import_name", fname[0 .. fname.len - 3]);
+            } else {
+                try rc.putString("import_name", fname);
+            }
+            try rc.putList("operations", try res_ops.toOwnedSlice());
+
+            result[idx] = rc;
+            idx += 1;
+        }
+
+        return @ptrCast(result[0..idx]);
+    }
+
     // ── Language generators ─────────────────────────────────────────────
 
     fn generateTypeScript(self: *SDKGenerator, target: config.Config.Target) !void {
@@ -765,10 +895,29 @@ pub const SDKGenerator = struct {
         const src = try std.fmt.allocPrint(self.allocator, "{s}/src", .{d});
         defer self.allocator.free(src);
         self.makeDirRecursive(src) catch {};
+        const resources_dir = try std.fmt.allocPrint(self.allocator, "{s}/src/resources", .{d});
+        defer self.allocator.free(resources_dir);
+        self.makeDirRecursive(resources_dir) catch {};
 
         const ctx = try self.buildBaseContext();
-        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
         try ctx.putList("models", try self.buildModelContexts(ctx));
+
+        // Build resource groups for TypeScript
+        const resource_ctxs = try self.buildResourceContexts(ctx, ops);
+        try ctx.putList("resources", resource_ctxs);
+
+        // Render one file per resource group
+        for (resource_ctxs) |rc| {
+            const file_name = rc.getString("file_name") orelse continue;
+            const out_rel = try std.fmt.allocPrint(self.allocator, "src/resources/{s}", .{file_name});
+            defer self.allocator.free(out_rel);
+            try self.renderTo("templates/typescript/resource.ts.template", d, out_rel, rc);
+        }
+
+        // Render resource index
+        try self.renderTo("templates/typescript/resource-index.ts.template", d, "src/resources/index.ts", ctx);
 
         try self.renderTo("templates/typescript/client.ts.template", d, "src/client.ts", ctx);
         try self.renderTo("templates/typescript/models.ts.template", d, "src/models.ts", ctx);

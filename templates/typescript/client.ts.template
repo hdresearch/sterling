@@ -3,6 +3,9 @@
 
 import type { {{#each models}}{{#unless is_enum}}{{name}}, {{/unless}}{{#if is_enum}}{{name}}, {{/if}}{{/each}} } from "./models";
 import { APIError, APIConnectionError } from "./errors";
+{{#each resources}}
+import { {{resource_class}} } from "{{import_path}}";
+{{/each}}
 
 export interface {{class_name}}ClientOptions {
   baseUrl?: string;
@@ -34,12 +37,22 @@ export class {{class_name}}Client {
   private maxRetries: number;
   private timeout: number;
 
+  // Resource accessors
+{{#each resources}}
+  readonly {{resource_name}}: {{resource_class}};
+{{/each}}
+
   constructor(options: {{class_name}}ClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? process.env["VERS_BASE_URL"] ?? "{{base_url}}";
     this.apiKey = options.apiKey ?? process.env["VERS_API_KEY"];
     this.headers = options.headers ?? {};
     this.maxRetries = options.maxRetries ?? 2;
     this.timeout = options.timeout ?? 30000;
+
+    // Initialize resources
+{{#each resources}}
+    this.{{resource_name}} = new {{resource_class}}(this);
+{{/each}}
   }
 
   private async request(method: string, path: string, body?: unknown): Promise<Response> {
@@ -98,7 +111,9 @@ export class {{class_name}}Client {
     throw lastError;
   }
 
+  // ── Flat methods (also accessible via resource accessors) ─────────
 {{#each operations}}
+
   /**
    * {{summary}}
    */
@@ -123,6 +138,5 @@ export class {{class_name}}Client {
     return this.request("{{method}}", url{{#if has_body}}, body{{/if}});
 {{/if}}
   }
-
 {{/each}}
 }
