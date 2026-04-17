@@ -23,3 +23,25 @@ export {
   RateLimitError,
   InternalServerError,
 } from "./errors";
+export { SSHClient } from "./lib/ssh";
+export type {
+  SSHOptions,
+  ExecuteOptions,
+  ExecuteResult,
+  ExecuteStreamOptions,
+  ConnectOptions,
+  ShellSession,
+  SFTPOptions,
+  TransferResult,
+  SSHConnectionInfo,
+} from "./lib/ssh";
+export {
+  SSHError,
+  SSHTLSError,
+  SSHHandshakeError,
+  SSHAuthenticationError,
+  SSHTimeoutError,
+  SSHExecError,
+  SFTPError,
+} from "./lib/ssh";
+export { connectVmSSH } from "./lib/vm-ssh";

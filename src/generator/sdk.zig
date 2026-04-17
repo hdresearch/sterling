@@ -898,6 +898,9 @@ pub const SDKGenerator = struct {
         const resources_dir = try std.fmt.allocPrint(self.allocator, "{s}/src/resources", .{d});
         defer self.allocator.free(resources_dir);
         self.makeDirRecursive(resources_dir) catch {};
+        const lib_ssh = try std.fmt.allocPrint(self.allocator, "{s}/src/lib/ssh", .{d});
+        defer self.allocator.free(lib_ssh);
+        self.makeDirRecursive(lib_ssh) catch {};
 
         const ctx = try self.buildBaseContext();
         const ops = try self.buildOperationContexts(ctx);
@@ -928,6 +931,11 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/typescript/tsconfig.json.template", d, "tsconfig.json", ctx);
         try self.renderTo("templates/typescript/package.json.template", d, "package.json", ctx);
         try self.renderTo("templates/typescript/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/typescript/lib/ssh/client.ts.template", d, "src/lib/ssh/client.ts", ctx);
+        try self.renderTo("templates/typescript/lib/ssh/errors.ts.template", d, "src/lib/ssh/errors.ts", ctx);
+        try self.renderTo("templates/typescript/lib/ssh/types.ts.template", d, "src/lib/ssh/types.ts", ctx);
+        try self.renderTo("templates/typescript/lib/ssh/index.ts.template", d, "src/lib/ssh/index.ts", ctx);
+        try self.renderTo("templates/typescript/lib/vm-ssh.ts.template", d, "src/lib/vm-ssh.ts", ctx);
         std.debug.print("Generated TypeScript SDK at {s}\n", .{d});
     }
 
