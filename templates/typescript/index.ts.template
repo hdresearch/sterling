@@ -4,3 +4,17 @@
 export { {{class_name}}Client } from "./client";
 export type { {{class_name}}ClientOptions } from "./client";
 export * from "./models";
+export {
+  VersSDKError,
+  APIError,
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  BadRequestError,
+  AuthenticationError,
+  PermissionDeniedError,
+  NotFoundError,
+  ConflictError,
+  UnprocessableEntityError,
+  RateLimitError,
+  InternalServerError,
+} from "./errors";

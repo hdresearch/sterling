@@ -4,6 +4,8 @@
 import httpx
 from typing import Any, Optional
 
+from .errors import APIError, APIConnectionError
+
 
 class {{class_name}}Client:
     """Client for {{spec_title}}"""
@@ -16,14 +18,59 @@ class {{class_name}}Client:
             headers["Authorization"] = f"Bearer {api_key}"
         self._client = httpx.AsyncClient(base_url=base_url, headers=headers)
 
+    def _check_response(self, response: httpx.Response) -> None:
+        if response.is_success:
+            return
+        body: Any = None
+        message: str | None = None
+        try:
+            body = response.json()
+        except Exception:
+            message = response.text
+        headers = dict(response.headers)
+        raise APIError.generate(
+            status=response.status_code,
+            body=body,
+            message=message,
+            headers=headers,
+        )
+
 {{#each operations}}
-    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}) -> httpx.Response:
+    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}) -> {{#if has_typed_response}}dict[str, Any]{{else}}httpx.Response{{/if}}:
         """{{summary}}"""
 {{#if has_path_params}}
         path = f"{{path_interpolate_py}}"
-        return await self._client.request("{{method}}", path{{#if has_body}}, json=body{{/if}})
+{{#if has_typed_response}}
+        try:
+            response = await self._client.request("{{method}}", path{{#if has_body}}, json=body{{/if}})
+        except httpx.ConnectError as exc:
+            raise APIConnectionError(cause=exc) from exc
+        self._check_response(response)
+        return response.json()
 {{else}}
-        return await self._client.request("{{method}}", "{{path}}"{{#if has_body}}, json=body{{/if}})
+        try:
+            response = await self._client.request("{{method}}", path{{#if has_body}}, json=body{{/if}})
+        except httpx.ConnectError as exc:
+            raise APIConnectionError(cause=exc) from exc
+        self._check_response(response)
+        return response
+{{/if}}
+{{else}}
+{{#if has_typed_response}}
+        try:
+            response = await self._client.request("{{method}}", "{{path}}"{{#if has_body}}, json=body{{/if}})
+        except httpx.ConnectError as exc:
+            raise APIConnectionError(cause=exc) from exc
+        self._check_response(response)
+        return response.json()
+{{else}}
+        try:
+            response = await self._client.request("{{method}}", "{{path}}"{{#if has_body}}, json=body{{/if}})
+        except httpx.ConnectError as exc:
+            raise APIConnectionError(cause=exc) from exc
+        self._check_response(response)
+        return response
+{{/if}}
 {{/if}}
 
 {{/each}}

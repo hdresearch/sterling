@@ -2,5 +2,33 @@
 # {{spec_title}} v{{spec_version}}
 
 from .client import {{class_name}}Client
+from .errors import (
+    VersSDKError,
+    APIError,
+    APIConnectionError,
+    APIConnectionTimeoutError,
+    BadRequestError,
+    AuthenticationError,
+    PermissionDeniedError,
+    NotFoundError,
+    ConflictError,
+    UnprocessableEntityError,
+    RateLimitError,
+    InternalServerError,
+)
 
-__all__ = ["{{class_name}}Client"]
+__all__ = [
+    "{{class_name}}Client",
+    "VersSDKError",
+    "APIError",
+    "APIConnectionError",
+    "APIConnectionTimeoutError",
+    "BadRequestError",
+    "AuthenticationError",
+    "PermissionDeniedError",
+    "NotFoundError",
+    "ConflictError",
+    "UnprocessableEntityError",
+    "RateLimitError",
+    "InternalServerError",
+]

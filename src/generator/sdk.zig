@@ -553,6 +553,7 @@ pub const SDKGenerator = struct {
 
         try self.renderTo("templates/typescript/client.ts.template", d, "src/client.ts", ctx);
         try self.renderTo("templates/typescript/models.ts.template", d, "src/models.ts", ctx);
+        try self.renderTo("templates/typescript/errors.ts.template", d, "src/errors.ts", ctx);
         try self.renderTo("templates/typescript/index.ts.template", d, "src/index.ts", ctx);
         try self.renderTo("templates/typescript/tsconfig.json.template", d, "tsconfig.json", ctx);
         try self.renderTo("templates/typescript/package.json.template", d, "package.json", ctx);
@@ -573,6 +574,7 @@ pub const SDKGenerator = struct {
 
         try self.renderTo("templates/rust/client.rs.template", d, "src/client.rs", ctx);
         try self.renderTo("templates/rust/models.rs.template", d, "src/models.rs", ctx);
+        try self.renderTo("templates/rust/errors.rs.template", d, "src/errors.rs", ctx);
         try self.renderTo("templates/rust/lib.rs.template", d, "src/lib.rs", ctx);
         try self.renderTo("templates/rust/cargo.toml.template", d, "Cargo.toml", ctx);
         std.debug.print("Generated Rust SDK at {s}\n", .{d});
@@ -591,6 +593,7 @@ pub const SDKGenerator = struct {
 
         try self.renderTo("templates/python/client.py.template", d, "src/client.py", ctx);
         try self.renderTo("templates/python/models.py.template", d, "src/models.py", ctx);
+        try self.renderTo("templates/python/errors.py.template", d, "src/errors.py", ctx);
         try self.renderTo("templates/python/__init__.py.template", d, "src/__init__.py", ctx);
         try self.renderTo("templates/python/pyproject.toml.template", d, "pyproject.toml", ctx);
         try self.renderTo("templates/python/README.md.template", d, "README.md", ctx);
@@ -607,6 +610,7 @@ pub const SDKGenerator = struct {
 
         try self.renderTo("templates/go/client.go.template", d, "client.go", ctx);
         try self.renderTo("templates/go/models.go.template", d, "models.go", ctx);
+        try self.renderTo("templates/go/errors.go.template", d, "errors.go", ctx);
         try self.renderTo("templates/go/go.mod.template", d, "go.mod", ctx);
         try self.renderTo("templates/go/README.md.template", d, "README.md", ctx);
         std.debug.print("Generated Go SDK at {s}\n", .{d});
