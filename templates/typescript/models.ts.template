@@ -48,3 +48,17 @@ export interface {{name}} {
 {{/if}}
 {{/if}}
 {{/each}}
+
+// ── Params types for operations with query parameters ───────────────
+
+{{#each params_types}}
+export interface {{name}} {
+{{#each fields}}
+{{#if description}}
+  /** {{description}} */
+{{/if}}
+  {{name}}{{#unless required}}?{{/unless}}: {{ts_type}};
+{{/each}}
+}
+
+{{/each}}

@@ -61,3 +61,18 @@ pub struct {{name}} {
 {{/if}}
 {{/if}}
 {{/each}}
+
+// ── Params types for operations with query parameters ───────────────
+
+{{#each params_types}}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct {{name}} {
+{{#each fields}}
+{{#if description}}
+    /// {{description}}
+{{/if}}
+    pub {{name}}: Option<{{rust_type}}>,
+{{/each}}
+}
+
+{{/each}}

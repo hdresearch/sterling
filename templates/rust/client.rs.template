@@ -94,9 +94,23 @@ impl Client {
     /// {{summary}}
     pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{response_type}}{{else}}reqwest::Response{{/if}}, reqwest::Error> {
 {{#if has_path_params}}
-        let url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
+        let mut url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
 {{else}}
-        let url = format!("{}{}", self.base_url, "{{path}}");
+        let mut url = format!("{}{}", self.base_url, "{{path}}");
+{{/if}}
+{{#if has_query_params}}
+        if let Some(p) = params {
+            let mut pairs: Vec<String> = Vec::new();
+{{#each query_params}}
+            if let Some(ref v) = p.{{name}} {
+                pairs.push(format!("{{name}}={}", v));
+            }
+{{/each}}
+            if !pairs.is_empty() {
+                url.push('?');
+                url.push_str(&pairs.join("&"));
+            }
+        }
 {{/if}}
         if self.log_level >= LogLevel::Debug {
             log::debug!("request: {{method}} {}", url);
@@ -110,6 +124,11 @@ impl Client {
                 tokio::time::sleep(Self::retry_delay(attempt - 1)).await;
             }
             let mut req = self.http.{{method_lower}}(&url).timeout(self.timeout);
+            req = req.header("User-Agent", format!(
+                "{{package_name}}/{{project_version}} rust {}/{}",
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+            ));
             if let Some(ref token) = self.auth_header() {
                 req = req.header("Authorization", token);
             }

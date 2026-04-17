@@ -49,3 +49,15 @@ type {{name}} struct {
 {{/if}}
 {{/if}}
 {{/each}}
+
+// ── Params types for operations with query parameters ───────────────
+
+{{#each params_types}}
+// {{name}} holds optional query parameters.
+type {{name}} struct {
+{{#each fields}}
+	{{pascal_name}} {{go_type}} `json:"{{name}},omitempty"`
+{{/each}}
+}
+
+{{/each}}

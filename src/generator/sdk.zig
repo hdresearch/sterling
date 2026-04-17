@@ -212,6 +212,8 @@ pub const SDKGenerator = struct {
                                 qc.* = template.Context.init(self.allocator);
                                 qc.parent = c;
                                 try qc.putString("name", param.name);
+                                var qp_pascal_buf: [256]u8 = undefined;
+                                try qc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(param.name, &qp_pascal_buf)));
                                 try qc.putString("description", self.sanitiseOneLine(param.description orelse ""));
                                 try qc.putBool("required", param.required);
                                 const schema_type = param.schema_type orelse "string";
@@ -236,6 +238,12 @@ pub const SDKGenerator = struct {
                             try c.putString("query_params_py", try self.buildQueryParamStringPython(op));
                             try c.putString("query_params_go", try self.buildQueryParamStringGo(op));
                             try c.putString("query_params_rust", try self.buildQueryParamStringRust(op));
+
+                            // Params type name for bundled query param interfaces
+                            var pascal_buf2: [256]u8 = undefined;
+                            const pascal_name = toPascalCaseStatic(op_id, &pascal_buf2);
+                            const params_type = try std.fmt.allocPrint(self.allocator, "{s}Params", .{pascal_name});
+                            try c.putString("params_type_name", params_type);
                         }
 
                         // Rust fn_params
@@ -390,15 +398,11 @@ pub const SDKGenerator = struct {
             }
         }
         if (has_query_params) {
-            for (op.parameters.items) |param| {
-                if (param.in == .query) {
-                    try buf.appendSlice(", ");
-                    try buf.appendSlice(param.name);
-                    try buf.appendSlice(": Option<");
-                    try buf.appendSlice(self.queryParamTypeRust(param.schema_type orelse "string"));
-                    try buf.appendSlice(">");
-                }
-            }
+            const op_id = op.operationId orelse "";
+            var pascal_buf2: [256]u8 = undefined;
+            const pascal_name = toPascalCaseStatic(op_id, &pascal_buf2);
+            const params_type = try std.fmt.allocPrint(self.allocator, ", params: Option<&{s}Params>", .{pascal_name});
+            try buf.appendSlice(params_type);
         }
         return try buf.toOwnedSlice();
     }
@@ -455,12 +459,14 @@ pub const SDKGenerator = struct {
             try buf.appendSlice("nil");
             has_prev = true;
         }
+        // Single nil for optional *Params pointer
+        var has_qp = false;
         for (op.parameters.items) |param| {
-            if (param.in == .query) {
-                if (has_prev) try buf.appendSlice(", ");
-                try buf.appendSlice("nil");
-                has_prev = true;
-            }
+            if (param.in == .query) { has_qp = true; break; }
+        }
+        if (has_qp) {
+            if (has_prev) try buf.appendSlice(", ");
+            try buf.appendSlice("nil");
         }
         return try buf.toOwnedSlice();
     }
@@ -479,12 +485,14 @@ pub const SDKGenerator = struct {
             try buf.appendSlice("&serde_json::json!({})");
             has_prev = true;
         }
+        // Single None for Option<&Params>
+        var has_qp = false;
         for (op.parameters.items) |param| {
-            if (param.in == .query) {
-                if (has_prev) try buf.appendSlice(", ");
-                try buf.appendSlice("None");
-                has_prev = true;
-            }
+            if (param.in == .query) { has_qp = true; break; }
+        }
+        if (has_qp) {
+            if (has_prev) try buf.appendSlice(", ");
+            try buf.appendSlice("None");
         }
         return try buf.toOwnedSlice();
     }
@@ -982,6 +990,40 @@ pub const SDKGenerator = struct {
         return @ptrCast(result[0..idx]);
     }
 
+    fn buildParamsTypeContexts(self: *SDKGenerator, base_ctx: *template.Context, ops: []const *template.Context) ![]const *template.Context {
+        // Count operations that have query params (and therefore params_type_name)
+        var count: usize = 0;
+        for (ops) |op| {
+            if (op.getString("params_type_name") != null) count += 1;
+        }
+
+        var result = try self.allocator.alloc(*template.Context, count);
+        var idx: usize = 0;
+
+        for (ops) |op| {
+            const type_name = op.getString("params_type_name") orelse continue;
+
+            const pt = try self.allocator.create(template.Context);
+            pt.* = template.Context.init(self.allocator);
+            pt.parent = base_ctx;
+
+            try pt.putString("name", type_name);
+
+            // Collect query param fields from the operation's query_params list
+            if (op.get("query_params")) |v| {
+                switch (v) {
+                    .list => |list| try pt.putList("fields", list),
+                    else => {},
+                }
+            }
+
+            result[idx] = pt;
+            idx += 1;
+        }
+
+        return @ptrCast(result[0..idx]);
+    }
+
     // ── Language generators ─────────────────────────────────────────────
 
     fn generateTypeScript(self: *SDKGenerator, target: config.Config.Target) !void {
@@ -1001,6 +1043,7 @@ pub const SDKGenerator = struct {
         const ops = try self.buildOperationContexts(ctx);
         try ctx.putList("operations", ops);
         try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
 
         // Build resource groups for TypeScript
         const resource_ctxs = try self.buildResourceContexts(ctx, ops);
@@ -1046,8 +1089,10 @@ pub const SDKGenerator = struct {
         self.makeDirRecursive(src) catch {};
 
         const ctx = try self.buildBaseContext();
-        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
         try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
 
         try self.renderTo("templates/rust/client.rs.template", d, "src/client.rs", ctx);
         try self.renderTo("templates/rust/models.rs.template", d, "src/models.rs", ctx);
@@ -1069,8 +1114,10 @@ pub const SDKGenerator = struct {
         self.makeDirRecursive(src) catch {};
 
         const ctx = try self.buildBaseContext();
-        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
         try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
 
         try self.renderTo("templates/python/client.py.template", d, "src/client.py", ctx);
         try self.renderTo("templates/python/models.py.template", d, "src/models.py", ctx);
@@ -1090,8 +1137,10 @@ pub const SDKGenerator = struct {
         self.makeDirRecursive(d) catch {};
 
         const ctx = try self.buildBaseContext();
-        try ctx.putList("operations", try self.buildOperationContexts(ctx));
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
         try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
 
         try self.renderTo("templates/go/client.go.template", d, "client.go", ctx);
         try self.renderTo("templates/go/models.go.template", d, "models.go", ctx);

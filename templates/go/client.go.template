@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"runtime"
 	"os"
 	"strings"
 	"time"
@@ -123,6 +124,7 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 			return nil, fmt.Errorf("create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", fmt.Sprintf("{{package_name}}/{{project_version}} go/%s %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH))
 		if c.APIKey != "" {
 			req.Header.Set("Authorization", "Bearer "+c.APIKey)
 		}
@@ -158,20 +160,22 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 
 {{#each operations}}
 // {{pascal_name}} - {{summary}}
-func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}{{query_params_go}}{{/if}}) (*http.Response, error) {
+func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params *{{params_type_name}}{{/if}}) (*http.Response, error) {
 {{#if has_path_params}}
 	reqPath := fmt.Sprintf("{{path_interpolate_go}}", {{go_format_args}})
 {{else}}
 	reqPath := "{{path}}"
 {{/if}}
 {{#if has_query_params}}
-	params := url.Values{}
+	qp := url.Values{}
+	if params != nil {
 {{#each query_params}}
-	if {{name}} != nil {
-		params.Set("{{name}}", fmt.Sprintf("%v", *{{name}}))
-	}
+		if params.{{pascal_name}} != nil {
+			qp.Set("{{name}}", fmt.Sprintf("%v", *params.{{pascal_name}}))
+		}
 {{/each}}
-	if qs := params.Encode(); qs != "" {
+	}
+	if qs := qp.Encode(); qs != "" {
 		reqPath += "?" + qs
 	}
 {{/if}}

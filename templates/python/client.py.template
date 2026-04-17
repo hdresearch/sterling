@@ -10,6 +10,7 @@ from typing import Any, Optional
 import httpx
 
 from .errors import APIError, APIConnectionError
+from .models import *  # noqa: F403
 
 logger = logging.getLogger("vers_sdk")
 
@@ -63,7 +64,10 @@ class {{class_name}}Client:
         self.api_key = api_key or os.environ.get("VERS_API_KEY")
         self.max_retries = max_retries
         self.timeout = timeout
-        headers: dict[str, str] = {}
+        import platform as _platform
+        headers: dict[str, str] = {
+            "User-Agent": f"{{package_name}}/{{project_version}} python/{_platform.python_version()} {_platform.system().lower()}/{_platform.machine()}",
+        }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         self._client = httpx.AsyncClient(
@@ -114,7 +118,7 @@ class {{class_name}}Client:
         raise last_exc  # type: ignore[misc]
 
 {{#each operations}}
-    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}{{#if has_query_params}}, {{query_params_py}}{{/if}}) -> httpx.Response:
+    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}{{#if has_query_params}}, params: {{params_type_name}} | None = None{{/if}}) -> httpx.Response:
         """{{summary}}"""
 {{#if has_path_params}}
         path = f"{{path_interpolate_py}}"
@@ -122,13 +126,14 @@ class {{class_name}}Client:
         path = "{{path}}"
 {{/if}}
 {{#if has_query_params}}
-        params: dict[str, Any] = {}
+        query: dict[str, Any] = {}
+        if params is not None:
 {{#each query_params}}
-        if {{name}} is not None:
-            params["{{name}}"] = {{name}}
+            if params.{{name}} is not None:
+                query["{{name}}"] = params.{{name}}
 {{/each}}
 {{/if}}
-        return await self._request("{{method}}", path{{#if has_body}}, json=body{{/if}}{{#if has_query_params}}, params=params{{/if}})
+        return await self._request("{{method}}", path{{#if has_body}}, json=body{{/if}}{{#if has_query_params}}, params=query{{/if}})
 
 {{/each}}
     async def close(self) -> None:
