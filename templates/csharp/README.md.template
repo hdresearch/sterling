@@ -1,0 +1,77 @@
+# Vers C# API Library
+
+This library provides convenient access to the [Vers](https://hdr.is) REST API from C# / .NET.
+
+It is generated with [Sterling](https://github.com/hdresearch/sterling).
+
+## Installation
+
+```sh
+dotnet add package {{package_name}}
+```
+
+## Usage
+
+```csharp
+using VersSdk;
+
+var client = new {{class_name}}Client(
+    apiKey: "your-api-key"  // or set VERS_API_KEY env var
+);
+
+// List all VMs
+var response = await client.ListVmsAsync();
+var body = await response.Content.ReadAsStringAsync();
+Console.WriteLine(body);
+
+client.Dispose();
+```
+
+## Configuration
+
+```csharp
+var client = new {{class_name}}Client(
+    baseUrl: "https://api.vers.sh",     // or set VERS_BASE_URL env var
+    apiKey: "your-api-key",             // or set VERS_API_KEY env var
+    maxRetries: 2,
+    timeout: TimeSpan.FromSeconds(30),
+    httpClient: customHttpClient,       // optional pre-configured HttpClient
+    logger: loggerInstance              // optional ILogger
+);
+```
+
+## Error handling
+
+```csharp
+using VersSdk;
+
+try
+{
+    await client.DeleteVmAsync("nonexistent-id");
+}
+catch (NotFoundException e)
+{
+    Console.WriteLine($"Not found: {e.StatusCode} {e.Message}");
+}
+catch (ApiException e)
+{
+    Console.WriteLine($"API error: {e.StatusCode}");
+}
+```
+
+## Retries
+
+Requests are automatically retried up to 2 times on 5xx errors and connection failures,
+with exponential backoff and jitter. The client respects `Retry-After` headers (capped at 60s).
+
+Idempotency keys are automatically generated for POST, PUT, PATCH, and DELETE requests.
+
+## Requirements
+
+- .NET 8.0+
+- System.Text.Json (included in .NET)
+- Microsoft.Extensions.Logging.Abstractions
+
+## License
+
+MIT

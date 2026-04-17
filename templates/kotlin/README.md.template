@@ -1,0 +1,80 @@
+# {{spec_title}} Kotlin SDK
+
+> {{package_name}} v{{project_version}}
+
+It is generated with [Sterling](https://github.com/hdresearch/sterling).
+
+## Installation
+
+### Gradle (Kotlin DSL)
+
+```kotlin
+dependencies {
+    implementation("com.vers.sdk:{{package_name}}:{{project_version}}")
+}
+```
+
+### Gradle (Groovy)
+
+```groovy
+implementation 'com.vers.sdk:{{package_name}}:{{project_version}}'
+```
+
+## Usage
+
+```kotlin
+import com.vers.sdk.{{class_name}}Client
+import kotlinx.coroutines.runBlocking
+
+fun main() = runBlocking {
+    val client = {{class_name}}Client(
+        apiKey = "your-api-key",
+    )
+
+    client.use {
+        // Call API methods
+        // val response = it.someOperation()
+    }
+}
+```
+
+## Configuration
+
+| Parameter    | Environment Variable | Default         | Description                      |
+|-------------|---------------------|-----------------|----------------------------------|
+| `baseUrl`   | `VERS_BASE_URL`     | `{{base_url}}`  | API base URL                     |
+| `apiKey`    | `VERS_API_KEY`      | —               | Bearer token for authentication  |
+| `maxRetries`| —                   | `2`             | Maximum retry attempts           |
+| `timeout`   | —                   | `30`            | Request timeout in seconds       |
+
+## Error Handling
+
+```kotlin
+import com.vers.sdk.*
+
+try {
+    val response = client.someOperation()
+} catch (e: NotFoundError) {
+    println("Resource not found: ${e.status}")
+} catch (e: RateLimitError) {
+    println("Rate limited, retry later")
+} catch (e: APIError) {
+    println("API error: ${e.status} - ${e.message}")
+} catch (e: APIConnectionError) {
+    println("Connection failed: ${e.message}")
+}
+```
+
+## Logging
+
+Set the `VERS_LOG` environment variable to control log verbosity:
+
+- `debug` — all request/response details
+- `info` — retries and important events
+- `warn` — warnings (default)
+- `error` — errors only
+- `off` — no logging
+
+## License
+
+Apache-2.0

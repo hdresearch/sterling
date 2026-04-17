@@ -1079,19 +1079,16 @@ pub const SDKGenerator = struct {
         return "Object";
     }
 
-    fn resolveTypePhp(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+    fn resolveTypePhp(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
         if (prop.ref) |ref| return ref;
-        const t = prop.type_name orelse return "mixed";
+        const t = prop.type_name orelse return "object";
         if (std.mem.eql(u8, t, "string")) return "string";
         if (std.mem.eql(u8, t, "integer")) return "int";
         if (std.mem.eql(u8, t, "number")) return "float";
         if (std.mem.eql(u8, t, "boolean")) return "bool";
-        if (std.mem.eql(u8, t, "array")) {
-            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "array<{s}>", .{ir}) catch return "array";
-            return "array";
-        }
+        if (std.mem.eql(u8, t, "array")) return "array";
         if (std.mem.eql(u8, t, "object")) return "array";
-        return "mixed";
+        return "string";
     }
 
     fn resolveTypeCsharp(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
