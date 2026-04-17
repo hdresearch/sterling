@@ -1,0 +1,86 @@
+# Vers Ruby API Library
+
+This library provides convenient access to the [Vers](https://hdr.is) REST API from Ruby.
+
+It is generated with [Sterling](https://github.com/hdresearch/sterling).
+
+## Installation
+
+Add to your Gemfile:
+
+```ruby
+gem "vers-sdk"
+```
+
+Or install directly:
+
+```sh
+gem install vers-sdk
+```
+
+## Usage
+
+```ruby
+require "vers_sdk"
+
+client = VersSdk::{{class_name}}Client.new(
+  api_key: "your-api-key"  # or set VERS_API_KEY env var
+)
+
+# List all VMs
+response = client.list_vms
+puts JSON.parse(response.body)
+
+# Create a new root VM
+response = client.create_new_root_vm(body: { "vm_config" => {} })
+puts JSON.parse(response.body)
+```
+
+## Configuration
+
+```ruby
+client = VersSdk::{{class_name}}Client.new(
+  api_key: "your-api-key",           # or set VERS_API_KEY env var
+  base_url: "https://api.vers.sh",   # or set VERS_BASE_URL env var
+  max_retries: 2,
+  timeout: 30
+)
+```
+
+## Error handling
+
+```ruby
+require "vers_sdk"
+
+begin
+  client.delete_vm("nonexistent-id")
+rescue VersSdk::NotFoundError => e
+  puts "Not found: #{e.status} #{e.message}"
+rescue VersSdk::APIError => e
+  puts "API error: #{e.status}"
+end
+```
+
+## Retries
+
+Requests are automatically retried up to 2 times on 5xx errors and connection failures,
+with exponential backoff and jitter. The client respects `Retry-After` headers (capped at 60s).
+
+## Per-request options
+
+```ruby
+options = VersSdk::RequestOptions.new(
+  headers: { "X-Custom" => "value" },
+  timeout: 60
+)
+client.list_vms(options: options)
+```
+
+## Requirements
+
+- Ruby >= 3.0
+- No external gem dependencies (uses `net/http` from stdlib)
+
+## License
+
+MIT
