@@ -4,6 +4,21 @@
 import type { {{#each models}}{{#unless is_enum}}{{name}}, {{/unless}}{{#if is_enum}}{{name}}, {{/if}}{{/each}} } from "./models";
 import { APIError, APIConnectionError } from "./errors";
 
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'off';
+
+const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
+  off: 0,
+  error: 1,
+  warn: 2,
+  info: 3,
+  debug: 4,
+};
+
+function parseLogLevel(value: string | undefined): LogLevel | undefined {
+  if (value && value in LOG_LEVEL_ORDER) return value as LogLevel;
+  return undefined;
+}
+
 export interface {{class_name}}ClientOptions {
   baseUrl?: string;
   apiKey?: string;
@@ -12,6 +27,8 @@ export interface {{class_name}}ClientOptions {
   maxRetries?: number;
   /** Request timeout in milliseconds. Default: 30000 */
   timeout?: number;
+  /** Log level. Defaults to VERS_LOG env var or 'warn'. */
+  logLevel?: LogLevel;
 }
 
 // Status codes that are retryable even though they are 4xx
@@ -33,6 +50,7 @@ export class {{class_name}}Client {
   private headers: Record<string, string>;
   private maxRetries: number;
   private timeout: number;
+  private logLevel: LogLevel;
 
   constructor(options: {{class_name}}ClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? process.env["VERS_BASE_URL"] ?? "{{base_url}}";
@@ -40,6 +58,19 @@ export class {{class_name}}Client {
     this.headers = options.headers ?? {};
     this.maxRetries = options.maxRetries ?? 2;
     this.timeout = options.timeout ?? 30000;
+    this.logLevel = options.logLevel ?? parseLogLevel(process.env["VERS_LOG"]) ?? 'warn';
+  }
+
+  private log(level: LogLevel, message: string): void {
+    if (level === 'off' || LOG_LEVEL_ORDER[level] > LOG_LEVEL_ORDER[this.logLevel]) return;
+    const ts = new Date().toISOString();
+    const tag = `[vers_sdk ${level.toUpperCase()}]`;
+    switch (level) {
+      case 'error': console.error(`${ts} ${tag} ${message}`); break;
+      case 'warn': console.warn(`${ts} ${tag} ${message}`); break;
+      case 'info': console.info(`${ts} ${tag} ${message}`); break;
+      case 'debug': console.debug(`${ts} ${tag} ${message}`); break;
+    }
   }
 
   private async request(method: string, path: string, body?: unknown): Promise<Response> {
@@ -51,9 +82,11 @@ export class {{class_name}}Client {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
+    this.log('debug', `request: ${method} ${path}`);
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) {
+        this.log('info', `retry attempt ${attempt}/${this.maxRetries} for ${method} ${path}`);
         await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt - 1)));
       }
 
@@ -73,6 +106,8 @@ export class {{class_name}}Client {
           continue;
         }
 
+        this.log('debug', `response: ${response.status} for ${method} ${path}`);
+
         if (!response.ok) {
           let errorBody: object | undefined;
           let errorMessage: string | undefined;
@@ -80,13 +115,16 @@ export class {{class_name}}Client {
             const text = await response.text();
             try { errorBody = JSON.parse(text); } catch { errorMessage = text; }
           } catch {}
-          throw APIError.generate(response.status, errorBody, errorMessage, response.headers);
+          const err = APIError.generate(response.status, errorBody, errorMessage, response.headers);
+          this.log('error', `API error: ${response.status} ${method} ${path}`);
+          throw err;
         }
 
         return response;
       } catch (error) {
         if (error instanceof APIError) throw error;
         lastError = error;
+        this.log('error', `connection error: ${method} ${path} - ${error instanceof Error ? error.message : String(error)}`);
         if (attempt === this.maxRetries) {
           throw new APIConnectionError({ cause: error instanceof Error ? error : undefined });
         }
