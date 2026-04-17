@@ -9,6 +9,13 @@ import { getEnv, detectRuntime, getDefaultFetch } from "./shims";
 import { {{resource_class}} } from "{{import_path}}";
 {{/each}}
 
+export interface Logger {
+  error(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  debug(message: string, ...args: unknown[]): void;
+}
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'off';
 
 const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
@@ -36,6 +43,8 @@ export interface {{class_name}}ClientOptions {
   logLevel?: LogLevel;
   /** Custom fetch implementation for testing, proxying, or custom transport. */
   fetch?: typeof fetch;
+  /** Custom logger (compatible with pino, winston, bunyan, consola, etc.). Default: console */
+  logger?: Logger;
 }
 
 // Status codes that are retryable even though they are 4xx
@@ -73,6 +82,7 @@ export class {{class_name}}Client {
   private timeout: number;
   private logLevel: LogLevel;
   private fetchFn: typeof fetch;
+  private logger: Logger;
 
   // Resource accessors
 {{#each resources}}
@@ -87,6 +97,7 @@ export class {{class_name}}Client {
     this.timeout = options.timeout ?? 30000;
     this.logLevel = options.logLevel ?? parseLogLevel(getEnv("VERS_LOG")) ?? 'warn';
     this.fetchFn = options.fetch ?? globalThis.fetch;
+    this.logger = options.logger ?? console;
 
     // Initialize resources
 {{#each resources}}
@@ -97,13 +108,9 @@ export class {{class_name}}Client {
   private log(level: LogLevel, message: string): void {
     if (level === 'off' || LOG_LEVEL_ORDER[level] > LOG_LEVEL_ORDER[this.logLevel]) return;
     const ts = new Date().toISOString();
-    const tag = `[vers_sdk ${level.toUpperCase()}]`;
-    switch (level) {
-      case 'error': console.error(`${ts} ${tag} ${message}`); break;
-      case 'warn': console.warn(`${ts} ${tag} ${message}`); break;
-      case 'info': console.info(`${ts} ${tag} ${message}`); break;
-      case 'debug': console.debug(`${ts} ${tag} ${message}`); break;
-    }
+    const tag = `[vers_sdk]`;
+    const msg = `${ts} ${tag} ${message}`;
+    this.logger[level](msg);
   }
 
   private mergeHeaders(...sources: (Record<string, string | null | undefined> | undefined)[]): Record<string, string> {
