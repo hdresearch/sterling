@@ -90,6 +90,15 @@ impl Client {
         Duration::from_millis(base_ms + jitter_ms)
     }
 
+    fn parse_retry_after(resp: &reqwest::Response) -> Option<Duration> {
+        let value = resp.headers().get("retry-after")?.to_str().ok()?;
+        if let Ok(seconds) = value.parse::<u64>() {
+            let capped = seconds.min(60);
+            return Some(Duration::from_secs(capped));
+        }
+        None
+    }
+
 {{#each operations}}
     /// {{summary}}
     pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{response_type}}{{else}}reqwest::Response{{/if}}, reqwest::Error> {
@@ -116,13 +125,15 @@ impl Client {
             log::debug!("request: {{method}} {}", url);
         }
         let mut last_err: Option<reqwest::Error> = None;
+        let mut retry_after_used = false;
         for attempt in 0..=self.max_retries {
-            if attempt > 0 {
+            if attempt > 0 && !retry_after_used {
                 if self.log_level >= LogLevel::Info {
                     log::info!("retry attempt {}/{} for {{method}} {}", attempt, self.max_retries, url);
                 }
                 tokio::time::sleep(Self::retry_delay(attempt - 1)).await;
             }
+            retry_after_used = false;
             let mut req = self.http.{{method_lower}}(&url).timeout(self.timeout);
             req = req.header("User-Agent", format!(
                 "{{package_name}}/{{project_version}} rust {}/{}",
@@ -146,6 +157,13 @@ impl Client {
 {{else}}
                         return Ok(resp);
 {{/if}}
+                    }
+                    if let Some(ra_delay) = Self::parse_retry_after(&resp) {
+                        retry_after_used = true;
+                        if self.log_level >= LogLevel::Info {
+                            log::info!("retry attempt {}/{} for {{method}} {} (retry-after: {:?})", attempt + 1, self.max_retries, url, ra_delay);
+                        }
+                        tokio::time::sleep(ra_delay).await;
                     }
                     // retryable status, continue loop
                 }
