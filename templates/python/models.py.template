@@ -41,6 +41,20 @@ class {{name}}:
     {{name}}: {{#if required}}{{py_type}}{{else}}Optional[{{py_type}}] = None{{/if}}
 {{/each}}
 
+{{#if has_nested_types}}
+{{#each nested_types}}
+    @dataclass
+    class {{nested_name}}:
+        """{{description}}"""
+{{#each fields}}
+{{#if description}}
+        #: {{description}}
+{{/if}}
+        {{name}}: {{#if required}}{{py_type}}{{else}}Optional[{{py_type}}] = None{{/if}}
+{{/each}}
+
+{{/each}}
+{{/if}}
 {{else}}
 @dataclass
 class {{name}}:

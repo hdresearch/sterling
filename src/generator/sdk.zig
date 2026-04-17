@@ -742,6 +742,7 @@ pub const SDKGenerator = struct {
             // Properties (for struct types)
             if (schema.properties.items.len > 0) {
                 var prop_ctxs = try self.allocator.alloc(*template.Context, schema.properties.items.len);
+                var nested_type_list = std.array_list.Managed(*template.Context).init(self.allocator);
                 for (schema.properties.items, 0..) |prop, pi| {
                     const pc = try self.allocator.create(template.Context);
                     pc.* = template.Context.init(self.allocator);
@@ -750,30 +751,79 @@ pub const SDKGenerator = struct {
                     // Rust-safe name (prefix with r# if keyword)
                     try pc.putString("rust_name", try self.rustSafeName(prop.name));
                     var prop_pascal_buf: [256]u8 = undefined;
-                    try pc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(prop.name, &prop_pascal_buf)));
+                    const prop_pascal = try self.allocator.dupe(u8, toPascalCaseStatic(prop.name, &prop_pascal_buf));
+                    try pc.putString("pascal_name", prop_pascal);
                     try pc.putBool("required", prop.required);
                     try pc.putString("description", self.sanitiseOneLine(prop.description orelse ""));
 
-                    // Resolve type for each language
-                    try pc.putString("ts_type", self.resolveTypeTS(prop));
-                    try pc.putString("rust_type", self.resolveTypeRust(prop));
-                    try pc.putString("py_type", self.resolveTypePython(prop));
-                    try pc.putString("go_type", self.resolveTypeGo(prop));
-
-                    // Has $ref?
-                    if (prop.ref) |ref| {
-                        try pc.putString("ref", ref);
-                        try pc.putBool("has_ref", true);
-                    } else {
+                    // Check for nested inline object
+                    if (prop.is_nested_object) {
+                        // Override types to reference the nested type
+                        try pc.putString("ts_type", try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ name, prop_pascal }));
+                        try pc.putString("rust_type", try std.fmt.allocPrint(self.allocator, "{s}::{s}", .{ toSnakeCaseStatic(name, &snake_buf), prop_pascal }));
+                        try pc.putString("py_type", try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ name, prop_pascal }));
+                        try pc.putString("go_type", try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ name, prop_pascal }));
                         try pc.putBool("has_ref", false);
+
+                        // Build nested type context
+                        const ntc = try self.allocator.create(template.Context);
+                        ntc.* = template.Context.init(self.allocator);
+                        ntc.parent = m;
+                        try ntc.putString("nested_name", prop_pascal);
+                        var nested_snake_buf: [256]u8 = undefined;
+                        try ntc.putString("nested_snake_name", try self.allocator.dupe(u8, toSnakeCaseStatic(prop.name, &nested_snake_buf)));
+                        try ntc.putString("description", self.sanitiseOneLine(prop.description orelse ""));
+                        // Go: prefixed name
+                        try ntc.putString("go_prefixed_name", try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ name, prop_pascal }));
+
+                        // Build fields for the nested type
+                        var nested_field_ctxs = try self.allocator.alloc(*template.Context, prop.nested_properties.len);
+                        for (prop.nested_properties, 0..) |nprop, ni| {
+                            const nfc = try self.allocator.create(template.Context);
+                            nfc.* = template.Context.init(self.allocator);
+                            nfc.parent = ntc;
+                            try nfc.putString("name", nprop.name);
+                            try nfc.putString("rust_name", try self.rustSafeName(nprop.name));
+                            var nf_pascal_buf: [256]u8 = undefined;
+                            try nfc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(nprop.name, &nf_pascal_buf)));
+                            try nfc.putBool("required", nprop.required);
+                            try nfc.putString("description", self.sanitiseOneLine(nprop.description orelse ""));
+                            try nfc.putString("ts_type", self.resolveTypeTS(nprop));
+                            try nfc.putString("rust_type", self.resolveTypeRust(nprop));
+                            try nfc.putString("py_type", self.resolveTypePython(nprop));
+                            try nfc.putString("go_type", self.resolveTypeGo(nprop));
+                            nested_field_ctxs[ni] = nfc;
+                        }
+                        try ntc.putList("fields", @ptrCast(nested_field_ctxs));
+                        try nested_type_list.append(ntc);
+                    } else {
+                        // Resolve type for each language
+                        try pc.putString("ts_type", self.resolveTypeTS(prop));
+                        try pc.putString("rust_type", self.resolveTypeRust(prop));
+                        try pc.putString("py_type", self.resolveTypePython(prop));
+                        try pc.putString("go_type", self.resolveTypeGo(prop));
+
+                        // Has $ref?
+                        if (prop.ref) |ref| {
+                            try pc.putString("ref", ref);
+                            try pc.putBool("has_ref", true);
+                        } else {
+                            try pc.putBool("has_ref", false);
+                        }
                     }
 
                     prop_ctxs[pi] = pc;
                 }
                 try m.putList("properties", @ptrCast(prop_ctxs));
                 try m.putBool("has_properties", true);
+
+                // Add nested types if any
+                const nested_slice = try nested_type_list.toOwnedSlice();
+                try m.putList("nested_types", @ptrCast(nested_slice));
+                try m.putBool("has_nested_types", nested_slice.len > 0);
             } else {
                 try m.putBool("has_properties", false);
+                try m.putBool("has_nested_types", false);
             }
 
             models[idx] = m;

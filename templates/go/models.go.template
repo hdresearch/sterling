@@ -40,6 +40,20 @@ type {{name}} struct {
 {{/each}}
 }
 
+{{#if has_nested_types}}
+{{#each nested_types}}
+// {{description}}
+type {{go_prefixed_name}} struct {
+{{#each fields}}
+{{#if description}}
+	// {{description}}
+{{/if}}
+	{{pascal_name}} {{go_type}} `json:"{{name}},omitempty"`
+{{/each}}
+}
+
+{{/each}}
+{{/if}}
 {{else}}
 type {{name}} struct {
 	Data interface{} `json:"data,omitempty"`
