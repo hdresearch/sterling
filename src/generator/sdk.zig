@@ -40,6 +40,11 @@ pub const SDKGenerator = struct {
             .python => try self.generatePython(target),
             .go => try self.generateGo(target),
             .zig => try self.generateZig(target),
+            .java => try self.generateJava(target),
+            .kotlin => try self.generateKotlin(target),
+            .ruby => try self.generateRuby(target),
+            .php => try self.generatePhp(target),
+            .csharp => try self.generateCsharp(target),
         }
     }
 
@@ -221,6 +226,11 @@ pub const SDKGenerator = struct {
                                 try qc.putString("py_type", self.queryParamTypePython(schema_type));
                                 try qc.putString("go_type", self.queryParamTypeGo(schema_type));
                                 try qc.putString("rust_type", self.queryParamTypeRust(schema_type));
+                                try qc.putString("java_type", self.queryParamTypeJava(schema_type));
+                                try qc.putString("kotlin_type", self.queryParamTypeKotlin(schema_type));
+                                try qc.putString("ruby_type", self.queryParamTypeRuby(schema_type));
+                                try qc.putString("php_type", self.queryParamTypePhp(schema_type));
+                                try qc.putString("csharp_type", self.queryParamTypeCsharp(schema_type));
                                 // Go format helper: how to convert to string for URL
                                 try qc.putString("go_format", self.queryParamGoFormat(param.name, schema_type));
                                 try query_params_list.append(qc);
@@ -728,6 +738,11 @@ pub const SDKGenerator = struct {
                         try vpc.putString("rust_type", self.resolveTypeRust(vprop));
                         try vpc.putString("py_type", self.resolveTypePython(vprop));
                         try vpc.putString("go_type", self.resolveTypeGo(vprop));
+                        try vpc.putString("java_type", self.resolveTypeJava(vprop));
+                        try vpc.putString("kotlin_type", self.resolveTypeKotlin(vprop));
+                        try vpc.putString("ruby_type", self.resolveTypeRuby(vprop));
+                        try vpc.putString("php_type", self.resolveTypePhp(vprop));
+                        try vpc.putString("csharp_type", self.resolveTypeCsharp(vprop));
                         // Rust-safe field name (avoid keyword 'ref')
                         if (std.mem.eql(u8, vprop.name, "ref")) {
                             try vpc.putString("rust_name", "ref_field");
@@ -798,6 +813,11 @@ pub const SDKGenerator = struct {
                             try nfc.putString("rust_type", self.resolveTypeRust(nprop));
                             try nfc.putString("py_type", self.resolveTypePython(nprop));
                             try nfc.putString("go_type", self.resolveTypeGo(nprop));
+                            try nfc.putString("java_type", self.resolveTypeJava(nprop));
+                            try nfc.putString("kotlin_type", self.resolveTypeKotlin(nprop));
+                            try nfc.putString("ruby_type", self.resolveTypeRuby(nprop));
+                            try nfc.putString("php_type", self.resolveTypePhp(nprop));
+                            try nfc.putString("csharp_type", self.resolveTypeCsharp(nprop));
                             nested_field_ctxs[ni] = nfc;
                         }
                         try ntc.putList("fields", @ptrCast(nested_field_ctxs));
@@ -808,6 +828,11 @@ pub const SDKGenerator = struct {
                         try pc.putString("rust_type", self.resolveTypeRust(prop));
                         try pc.putString("py_type", self.resolveTypePython(prop));
                         try pc.putString("go_type", self.resolveTypeGo(prop));
+                        try pc.putString("java_type", self.resolveTypeJava(prop));
+                        try pc.putString("kotlin_type", self.resolveTypeKotlin(prop));
+                        try pc.putString("ruby_type", self.resolveTypeRuby(prop));
+                        try pc.putString("php_type", self.resolveTypePhp(prop));
+                        try pc.putString("csharp_type", self.resolveTypeCsharp(prop));
 
                         // Has $ref?
                         if (prop.ref) |ref| {
@@ -935,6 +960,150 @@ pub const SDKGenerator = struct {
             return "[]interface{}";
         }
         return "interface{}";
+    }
+
+    // ── Type resolvers for new languages ────────────────────────────────
+
+    fn resolveTypeJava(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "Object";
+        if (std.mem.eql(u8, t, "string")) return "String";
+        if (std.mem.eql(u8, t, "integer")) {
+            if (prop.format) |f| {
+                if (std.mem.eql(u8, f, "int32")) return "Integer";
+            }
+            return "Long";
+        }
+        if (std.mem.eql(u8, t, "number")) return "Double";
+        if (std.mem.eql(u8, t, "boolean")) return "Boolean";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "List<{s}>", .{ir}) catch return "List<Object>";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "List<String>";
+                if (std.mem.eql(u8, it, "integer")) return "List<Long>";
+                if (std.mem.eql(u8, it, "number")) return "List<Double>";
+                if (std.mem.eql(u8, it, "boolean")) return "List<Boolean>";
+            }
+            return "List<Object>";
+        }
+        if (std.mem.eql(u8, t, "object")) return "Map<String, Object>";
+        return "Object";
+    }
+
+    fn resolveTypeKotlin(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "Any";
+        if (std.mem.eql(u8, t, "string")) return "String";
+        if (std.mem.eql(u8, t, "integer")) {
+            if (prop.format) |f| {
+                if (std.mem.eql(u8, f, "int32")) return "Int";
+            }
+            return "Long";
+        }
+        if (std.mem.eql(u8, t, "number")) return "Double";
+        if (std.mem.eql(u8, t, "boolean")) return "Boolean";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "List<{s}>", .{ir}) catch return "List<Any>";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "List<String>";
+                if (std.mem.eql(u8, it, "integer")) return "List<Long>";
+                if (std.mem.eql(u8, it, "number")) return "List<Double>";
+                if (std.mem.eql(u8, it, "boolean")) return "List<Boolean>";
+            }
+            return "List<Any>";
+        }
+        if (std.mem.eql(u8, t, "object")) return "Map<String, Any>";
+        return "Any";
+    }
+
+    fn resolveTypeRuby(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "Object";
+        if (std.mem.eql(u8, t, "string")) return "String";
+        if (std.mem.eql(u8, t, "integer")) return "Integer";
+        if (std.mem.eql(u8, t, "number")) return "Float";
+        if (std.mem.eql(u8, t, "boolean")) return "Boolean";
+        if (std.mem.eql(u8, t, "array")) return "Array";
+        if (std.mem.eql(u8, t, "object")) return "Hash";
+        return "Object";
+    }
+
+    fn resolveTypePhp(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "mixed";
+        if (std.mem.eql(u8, t, "string")) return "string";
+        if (std.mem.eql(u8, t, "integer")) return "int";
+        if (std.mem.eql(u8, t, "number")) return "float";
+        if (std.mem.eql(u8, t, "boolean")) return "bool";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "array<{s}>", .{ir}) catch return "array";
+            return "array";
+        }
+        if (std.mem.eql(u8, t, "object")) return "array";
+        return "mixed";
+    }
+
+    fn resolveTypeCsharp(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "object";
+        if (std.mem.eql(u8, t, "string")) return "string";
+        if (std.mem.eql(u8, t, "integer")) {
+            if (prop.format) |f| {
+                if (std.mem.eql(u8, f, "int32")) return "int";
+            }
+            return "long";
+        }
+        if (std.mem.eql(u8, t, "number")) return "double";
+        if (std.mem.eql(u8, t, "boolean")) return "bool";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "List<{s}>", .{ir}) catch return "List<object>";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "List<string>";
+                if (std.mem.eql(u8, it, "integer")) return "List<long>";
+                if (std.mem.eql(u8, it, "number")) return "List<double>";
+                if (std.mem.eql(u8, it, "boolean")) return "List<bool>";
+            }
+            return "List<object>";
+        }
+        if (std.mem.eql(u8, t, "object")) return "Dictionary<string, object>";
+        return "object";
+    }
+
+    // ── Query param types for new languages ─────────────────────────────
+
+    fn queryParamTypeJava(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "Boolean";
+        if (std.mem.eql(u8, schema_type, "integer")) return "Long";
+        if (std.mem.eql(u8, schema_type, "number")) return "Double";
+        return "String";
+    }
+
+    fn queryParamTypeKotlin(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "Boolean?";
+        if (std.mem.eql(u8, schema_type, "integer")) return "Long?";
+        if (std.mem.eql(u8, schema_type, "number")) return "Double?";
+        return "String?";
+    }
+
+    fn queryParamTypeRuby(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "Boolean";
+        if (std.mem.eql(u8, schema_type, "integer")) return "Integer";
+        if (std.mem.eql(u8, schema_type, "number")) return "Float";
+        return "String";
+    }
+
+    fn queryParamTypePhp(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "?bool";
+        if (std.mem.eql(u8, schema_type, "integer")) return "?int";
+        if (std.mem.eql(u8, schema_type, "number")) return "?float";
+        return "?string";
+    }
+
+    fn queryParamTypeCsharp(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "bool?";
+        if (std.mem.eql(u8, schema_type, "integer")) return "long?";
+        if (std.mem.eql(u8, schema_type, "number")) return "double?";
+        return "string?";
     }
 
     // ── Resource grouping for TypeScript ─────────────────────────────────
@@ -1225,6 +1394,128 @@ pub const SDKGenerator = struct {
         std.debug.print("Generated Zig SDK at {s}\n", .{d});
     }
 
+    fn generateJava(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/java/com/vers/sdk", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
+        const test_dir = try std.fmt.allocPrint(self.allocator, "{s}/src/test/java/com/vers/sdk", .{d});
+        defer self.allocator.free(test_dir);
+        self.makeDirRecursive(test_dir) catch {};
+
+        const ctx = try self.buildBaseContext();
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
+
+        try self.renderTo("templates/java/Client.java.template", d, "src/main/java/com/vers/sdk/VersClient.java", ctx);
+        try self.renderTo("templates/java/Models.java.template", d, "src/main/java/com/vers/sdk/Models.java", ctx);
+        try self.renderTo("templates/java/Errors.java.template", d, "src/main/java/com/vers/sdk/Errors.java", ctx);
+        try self.renderTo("templates/java/RequestOptions.java.template", d, "src/main/java/com/vers/sdk/RequestOptions.java", ctx);
+        try self.renderTo("templates/java/pom.xml.template", d, "pom.xml", ctx);
+        try self.renderTo("templates/java/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/java/ClientTest.java.template", d, "src/test/java/com/vers/sdk/VersClientTest.java", ctx);
+        std.debug.print("Generated Java SDK at {s}\n", .{d});
+    }
+
+    fn generateKotlin(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/kotlin/com/vers/sdk", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
+        const test_dir = try std.fmt.allocPrint(self.allocator, "{s}/src/test/kotlin/com/vers/sdk", .{d});
+        defer self.allocator.free(test_dir);
+        self.makeDirRecursive(test_dir) catch {};
+
+        const ctx = try self.buildBaseContext();
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
+
+        try self.renderTo("templates/kotlin/Client.kt.template", d, "src/main/kotlin/com/vers/sdk/VersClient.kt", ctx);
+        try self.renderTo("templates/kotlin/Models.kt.template", d, "src/main/kotlin/com/vers/sdk/Models.kt", ctx);
+        try self.renderTo("templates/kotlin/Errors.kt.template", d, "src/main/kotlin/com/vers/sdk/Errors.kt", ctx);
+        try self.renderTo("templates/kotlin/RequestOptions.kt.template", d, "src/main/kotlin/com/vers/sdk/RequestOptions.kt", ctx);
+        try self.renderTo("templates/kotlin/build.gradle.kts.template", d, "build.gradle.kts", ctx);
+        try self.renderTo("templates/kotlin/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/kotlin/ClientTest.kt.template", d, "src/test/kotlin/com/vers/sdk/VersClientTest.kt", ctx);
+        std.debug.print("Generated Kotlin SDK at {s}\n", .{d});
+    }
+
+    fn generateRuby(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const lib_dir = try std.fmt.allocPrint(self.allocator, "{s}/lib/vers_sdk", .{d});
+        defer self.allocator.free(lib_dir);
+        self.makeDirRecursive(lib_dir) catch {};
+        const test_dir = try std.fmt.allocPrint(self.allocator, "{s}/test", .{d});
+        defer self.allocator.free(test_dir);
+        self.makeDirRecursive(test_dir) catch {};
+
+        const ctx = try self.buildBaseContext();
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
+
+        try self.renderTo("templates/ruby/client.rb.template", d, "lib/vers_sdk/client.rb", ctx);
+        try self.renderTo("templates/ruby/models.rb.template", d, "lib/vers_sdk/models.rb", ctx);
+        try self.renderTo("templates/ruby/errors.rb.template", d, "lib/vers_sdk/errors.rb", ctx);
+        try self.renderTo("templates/ruby/vers_sdk.rb.template", d, "lib/vers_sdk.rb", ctx);
+        try self.renderTo("templates/ruby/gemspec.template", d, "vers-sdk.gemspec", ctx);
+        try self.renderTo("templates/ruby/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/ruby/test_client.rb.template", d, "test/test_client.rb", ctx);
+        std.debug.print("Generated Ruby SDK at {s}\n", .{d});
+    }
+
+    fn generatePhp(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
+        const test_dir = try std.fmt.allocPrint(self.allocator, "{s}/tests", .{d});
+        defer self.allocator.free(test_dir);
+        self.makeDirRecursive(test_dir) catch {};
+
+        const ctx = try self.buildBaseContext();
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
+
+        try self.renderTo("templates/php/Client.php.template", d, "src/Client.php", ctx);
+        try self.renderTo("templates/php/Models.php.template", d, "src/Models.php", ctx);
+        try self.renderTo("templates/php/Errors.php.template", d, "src/Errors.php", ctx);
+        try self.renderTo("templates/php/composer.json.template", d, "composer.json", ctx);
+        try self.renderTo("templates/php/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/php/ClientTest.php.template", d, "tests/ClientTest.php", ctx);
+        std.debug.print("Generated PHP SDK at {s}\n", .{d});
+    }
+
+    fn generateCsharp(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+
+        const ctx = try self.buildBaseContext();
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
+
+        try self.renderTo("templates/csharp/VersClient.cs.template", d, "VersClient.cs", ctx);
+        try self.renderTo("templates/csharp/Models.cs.template", d, "Models.cs", ctx);
+        try self.renderTo("templates/csharp/Errors.cs.template", d, "Errors.cs", ctx);
+        try self.renderTo("templates/csharp/VersSdk.csproj.template", d, "VersSdk.csproj", ctx);
+        try self.renderTo("templates/csharp/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/csharp/VersClientTest.cs.template", d, "VersClientTest.cs", ctx);
+        std.debug.print("Generated C# SDK at {s}\n", .{d});
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     pub fn makeDirRecursive(_: *SDKGenerator, path: []const u8) !void {
@@ -1252,12 +1543,22 @@ pub const SDKGenerator = struct {
                 std.mem.endsWith(u8, rel, ".rs") or
                 std.mem.endsWith(u8, rel, ".py") or
                 std.mem.endsWith(u8, rel, ".go") or
-                std.mem.endsWith(u8, rel, ".zig");
+                std.mem.endsWith(u8, rel, ".zig") or
+                std.mem.endsWith(u8, rel, ".java") or
+                std.mem.endsWith(u8, rel, ".kt") or
+                std.mem.endsWith(u8, rel, ".rb") or
+                std.mem.endsWith(u8, rel, ".php") or
+                std.mem.endsWith(u8, rel, ".cs");
             if (is_code) {
                 const lang = if (std.mem.endsWith(u8, rel, ".ts")) "typescript"
                     else if (std.mem.endsWith(u8, rel, ".rs")) "rust"
                     else if (std.mem.endsWith(u8, rel, ".py")) "python"
                     else if (std.mem.endsWith(u8, rel, ".go")) "go"
+                    else if (std.mem.endsWith(u8, rel, ".java")) "java"
+                    else if (std.mem.endsWith(u8, rel, ".kt")) "kotlin"
+                    else if (std.mem.endsWith(u8, rel, ".rb")) "ruby"
+                    else if (std.mem.endsWith(u8, rel, ".php")) "php"
+                    else if (std.mem.endsWith(u8, rel, ".cs")) "csharp"
                     else "zig";
                 std.debug.print("  Enhancing {s}...\n", .{rel});
                 break :blk self.enhancer.?.enhance(content, lang, rel);

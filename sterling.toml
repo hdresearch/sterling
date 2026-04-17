@@ -26,6 +26,31 @@ language = "go"
 repository = "hdresearch/go-sdk"
 output_dir = "./generated/go"
 
+[targets.java]
+language = "java"
+repository = "hdresearch/java-sdk"
+output_dir = "./generated/java"
+
+[targets.kotlin]
+language = "kotlin"
+repository = "hdresearch/kotlin-sdk"
+output_dir = "./generated/kotlin"
+
+[targets.ruby]
+language = "ruby"
+repository = "hdresearch/ruby-sdk"
+output_dir = "./generated/ruby"
+
+[targets.php]
+language = "php"
+repository = "hdresearch/php-sdk"
+output_dir = "./generated/php"
+
+[targets.csharp]
+language = "csharp"
+repository = "hdresearch/csharp-sdk"
+output_dir = "./generated/csharp"
+
 [llm]
 provider = "anthropic"
 api_key = "${ANTHROPIC_API_KEY}"

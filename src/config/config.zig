@@ -23,6 +23,11 @@ pub const Config = struct {
             python,
             go,
             zig,
+            java,
+            kotlin,
+            ruby,
+            php,
+            csharp,
         };
     };
 
@@ -151,6 +156,11 @@ fn parseLanguage(lang: []const u8) ?Config.Target.Language {
     if (std.mem.eql(u8, lang, "python")) return .python;
     if (std.mem.eql(u8, lang, "go")) return .go;
     if (std.mem.eql(u8, lang, "zig")) return .zig;
+    if (std.mem.eql(u8, lang, "java")) return .java;
+    if (std.mem.eql(u8, lang, "kotlin")) return .kotlin;
+    if (std.mem.eql(u8, lang, "ruby")) return .ruby;
+    if (std.mem.eql(u8, lang, "php")) return .php;
+    if (std.mem.eql(u8, lang, "csharp")) return .csharp;
     return null;
 }
 
