@@ -5,5 +5,5 @@ pub mod client;
 pub mod errors;
 pub mod models;
 
-pub use client::Client;
+pub use client::{Client, RequestOptions};
 pub use models::*;

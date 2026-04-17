@@ -5,12 +5,25 @@ import asyncio
 import logging
 import os
 import random
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import httpx
 
 from .errors import APIError, APIConnectionError
 from .models import *  # noqa: F403
+
+
+@dataclass
+class RequestOptions:
+    """Per-request options that override client defaults."""
+
+    #: Additional headers to send with the request.
+    #: Set a header to None to remove it.
+    headers: dict[str, str | None] | None = None
+
+    #: Request timeout in seconds. Overrides the client-level timeout.
+    timeout: float | None = None
 
 logger = logging.getLogger("vers_sdk")
 
@@ -93,15 +106,34 @@ class {{class_name}}Client:
             headers=headers,
         )
 
-    async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+    async def _request(self, method: str, path: str, options: RequestOptions | None = None, **kwargs: Any) -> httpx.Response:
         logger.debug("request: %s %s", method, path)
+
+        # Apply per-request header overrides
+        extra_headers: dict[str, str] = {}
+        remove_headers: list[str] = []
+        if options and options.headers:
+            for k, v in options.headers.items():
+                if v is None:
+                    remove_headers.append(k)
+                else:
+                    extra_headers[k] = v
+        if extra_headers:
+            kwargs["headers"] = {**kwargs.get("headers", {}), **extra_headers}
+
+        effective_timeout = options.timeout if options and options.timeout is not None else None
+
         last_exc: Optional[Exception] = None
         for attempt in range(self.max_retries + 1):
             if attempt > 0:
                 logger.info("retry attempt %d/%d for %s %s", attempt, self.max_retries, method, path)
                 await asyncio.sleep(_retry_delay(attempt - 1))
             try:
-                response = await self._client.request(method, path, **kwargs)
+                req_kwargs = dict(kwargs)
+                if effective_timeout is not None:
+                    req_kwargs["timeout"] = effective_timeout
+                response = await self._client.request(method, path, **req_kwargs)
+                # Remove headers that were set to None
                 logger.debug("response: %d for %s %s", response.status_code, method, path)
                 if _is_retryable_status(response.status_code) and attempt < self.max_retries:
                     last_exc = Exception(f"HTTP {response.status_code}")
@@ -118,7 +150,7 @@ class {{class_name}}Client:
         raise last_exc  # type: ignore[misc]
 
 {{#each operations}}
-    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}{{#if has_query_params}}, params: {{params_type_name}} | None = None{{/if}}) -> httpx.Response:
+    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}{{#if has_query_params}}, params: {{params_type_name}} | None = None{{/if}}, options: RequestOptions | None = None) -> httpx.Response:
         """{{summary}}"""
 {{#if has_path_params}}
         path = f"{{path_interpolate_py}}"
@@ -133,7 +165,7 @@ class {{class_name}}Client:
                 query["{{name}}"] = params.{{name}}
 {{/each}}
 {{/if}}
-        return await self._request("{{method}}", path{{#if has_body}}, json=body{{/if}}{{#if has_query_params}}, params=query{{/if}})
+        return await self._request("{{method}}", path, options{{#if has_body}}, json=body{{/if}}{{#if has_query_params}}, params=query{{/if}})
 
 {{/each}}
     async def close(self) -> None:

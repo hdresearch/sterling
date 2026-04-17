@@ -3,7 +3,18 @@
 
 use reqwest::Client as HttpClient;
 use crate::models::*;
+use std::collections::HashMap;
 use std::time::Duration;
+
+/// Per-request options that override client defaults.
+#[derive(Debug, Clone, Default)]
+pub struct RequestOptions {
+    /// Additional headers to send with the request.
+    /// Set a header value to an empty string to remove it.
+    pub headers: Option<HashMap<String, String>>,
+    /// Request timeout override.
+    pub timeout: Option<Duration>,
+}
 
 /// Log level for the SDK client, matching VERS_LOG env var values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -115,6 +126,7 @@ impl Client {
         if self.log_level >= LogLevel::Debug {
             log::debug!("request: {{method}} {}", url);
         }
+        let effective_timeout = options.and_then(|o| o.timeout).unwrap_or(self.timeout);
         let mut last_err: Option<reqwest::Error> = None;
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
@@ -123,7 +135,7 @@ impl Client {
                 }
                 tokio::time::sleep(Self::retry_delay(attempt - 1)).await;
             }
-            let mut req = self.http.{{method_lower}}(&url).timeout(self.timeout);
+            let mut req = self.http.{{method_lower}}(&url).timeout(effective_timeout);
             req = req.header("User-Agent", format!(
                 "{{package_name}}/{{project_version}} rust {}/{}",
                 std::env::consts::OS,
@@ -131,6 +143,14 @@ impl Client {
             ));
             if let Some(ref token) = self.auth_header() {
                 req = req.header("Authorization", token);
+            }
+            // Apply per-request custom headers
+            if let Some(opts) = options {
+                if let Some(ref hdrs) = opts.headers {
+                    for (k, v) in hdrs {
+                        req = req.header(k.as_str(), v.as_str());
+                    }
+                }
             }
 {{#if has_body}}
             req = req.json(body);
