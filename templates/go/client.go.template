@@ -8,61 +8,129 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
+	"math/rand"
 	"net/http"
+	"net/url"
+	"os"
+	"time"
 )
 
 type Client struct {
 	BaseURL    string
 	APIKey     string
 	HTTPClient *http.Client
+	MaxRetries int
+	Timeout    time.Duration
+}
+
+var retryableStatusCodes = map[int]bool{
+	408: true,
+	409: true,
+	429: true,
+}
+
+func isRetryableStatus(code int) bool {
+	return code >= 500 || retryableStatusCodes[code]
+}
+
+func retryDelay(attempt int) time.Duration {
+	baseMs := 500.0 * math.Pow(2, float64(attempt))
+	jitterMs := rand.Float64() * baseMs * 0.25
+	return time.Duration(baseMs+jitterMs) * time.Millisecond
 }
 
 func NewClient(baseURL string, apiKey string) *Client {
+	if baseURL == "" {
+		if envURL := os.Getenv("VERS_BASE_URL"); envURL != "" {
+			baseURL = envURL
+		}
+	}
+	if apiKey == "" {
+		if envKey := os.Getenv("VERS_API_KEY"); envKey != "" {
+			apiKey = envKey
+		}
+	}
 	return &Client{
 		BaseURL:    baseURL,
 		APIKey:     apiKey,
 		HTTPClient: &http.Client{},
+		MaxRetries: 2,
+		Timeout:    30 * time.Second,
 	}
 }
 
 func (c *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
-	var reqBody io.Reader
-	if body != nil {
-		jsonBody, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("marshal body: %w", err)
+	var lastErr error
+	for attempt := 0; attempt <= c.MaxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(retryDelay(attempt - 1))
 		}
-		reqBody = bytes.NewBuffer(jsonBody)
+
+		var reqBody io.Reader
+		if body != nil {
+			jsonBody, err := json.Marshal(body)
+			if err != nil {
+				return nil, fmt.Errorf("marshal body: %w", err)
+			}
+			reqBody = bytes.NewBuffer(jsonBody)
+		}
+		req, err := http.NewRequest(method, c.BaseURL+path, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if c.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+c.APIKey)
+		}
+
+		client := c.HTTPClient
+		if client.Timeout == 0 && c.Timeout > 0 {
+			client = &http.Client{Timeout: c.Timeout}
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = &ConnectionError{Message: err.Error(), Cause: err}
+			if attempt == c.MaxRetries {
+				return nil, lastErr
+			}
+			continue
+		}
+		if isRetryableStatus(resp.StatusCode) && attempt < c.MaxRetries {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			defer resp.Body.Close()
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return nil, NewAPIError(resp.StatusCode, resp.Header, string(bodyBytes))
+		}
+		return resp, nil
 	}
-	req, err := http.NewRequest(method, c.BaseURL+path, reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.APIKey)
-	}
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, &ConnectionError{Message: err.Error(), Cause: err}
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, NewAPIError(resp.StatusCode, resp.Header, string(bodyBytes))
-	}
-	return resp, nil
+	return nil, lastErr
 }
 
 {{#each operations}}
 // {{pascal_name}} - {{summary}}
-func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}) (*http.Response, error) {
+func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}{{query_params_go}}{{/if}}) (*http.Response, error) {
 {{#if has_path_params}}
-	path := fmt.Sprintf("{{path_interpolate_go}}", {{go_format_args}})
-	return c.doRequest("{{method}}", path{{#if has_body}}, body{{else}}, nil{{/if}})
+	reqPath := fmt.Sprintf("{{path_interpolate_go}}", {{go_format_args}})
 {{else}}
-	return c.doRequest("{{method}}", "{{path}}"{{#if has_body}}, body{{else}}, nil{{/if}})
+	reqPath := "{{path}}"
 {{/if}}
+{{#if has_query_params}}
+	params := url.Values{}
+{{#each query_params}}
+	if {{name}} != nil {
+		params.Set("{{name}}", fmt.Sprintf("%v", *{{name}}))
+	}
+{{/each}}
+	if qs := params.Encode(); qs != "" {
+		reqPath += "?" + qs
+	}
+{{/if}}
+	return c.doRequest("{{method}}", reqPath{{#if has_body}}, body{{else}}, nil{{/if}})
 }
 
 {{/each}}

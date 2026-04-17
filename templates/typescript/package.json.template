@@ -8,5 +8,8 @@
     "build": "tsc",
     "test": "jest"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "*"
+  }
 }

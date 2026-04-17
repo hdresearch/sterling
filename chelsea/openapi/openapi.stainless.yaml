@@ -1,0 +1,182 @@
+# yaml-language-server: $schema=https://app.stainless.com/config.schema.json
+
+organization:
+  # Name of your organization or company, used to determine the name of the client
+  # and headings.
+  name: vers
+  docs: https://hdr.is
+  contact: support@hdr.is
+
+# `targets` define the output targets and their customization options, such as
+# whether to emit the Node SDK and what it's package name should be.
+targets:
+  typescript:
+    package_name: vers
+    production_repo: hdresearch/vers-sdk-ts
+    publish:
+      npm: false
+  go:
+    package_name: vers
+    production_repo: hdresearch/vers-sdk-go
+  ruby:
+    gem_name: vers
+    production_repo: hdresearch/vers-sdk-ruby
+    publish:
+      rubygems: false
+
+# `environments` are a map of the name of the environment (e.g. "sandbox",
+# "production") to the corresponding url to use.
+environments:
+  production: https://api.vers.sh
+
+# `resources` define the structure and organziation for your API, such as how
+# methods and models are grouped together and accessed.
+resources:
+  vm:
+    models:
+      error_response: '#/components/schemas/ErrorResponse'
+      new_root_request: '#/components/schemas/NewRootRequest'
+      new_vm_response: '#/components/schemas/NewVmResponse'
+      new_vms_response: '#/components/schemas/NewVmsResponse'
+      vm_commit_response: '#/components/schemas/VmCommitResponse'
+      vm_delete_response: '#/components/schemas/VmDeleteResponse'
+      vm_from_commit_request: '#/components/schemas/FromCommitVmRequest'
+      vm_update_state_request: '#/components/schemas/VmUpdateStateRequest'
+      vm_ssh_key_response: '#/components/schemas/VmSshKeyResponse'
+      vm: '#/components/schemas/VM'
+      vm_metadata_response: '#/components/schemas/VmMetadataResponse'
+      vm_resize_disk_request: '#/components/schemas/VmResizeDiskRequest'
+      vm_exec_request: '#/components/schemas/VmExecRequest'
+      vm_exec_response: '#/components/schemas/VmExecResponse'
+      vm_exec_stream_attach_request: '#/components/schemas/VmExecStreamAttachRequest'
+      vm_exec_log_query: '#/components/schemas/VmExecLogQuery'
+      vm_exec_log_response: '#/components/schemas/VmExecLogResponse'
+    methods:
+      create_root: post /api/v1/vm/new_root
+      branch: post /api/v1/vm/{vm_or_commit_id}/branch
+      branch_by_vm: post /api/v1/vm/branch/by_vm/{vm_id}
+      branch_by_commit: post /api/v1/vm/branch/by_commit/{commit_id}
+      branch_by_tag: post /api/v1/vm/branch/by_tag/{tag_name}
+      commit: post /api/v1/vm/{vm_id}/commit
+      restore_from_commit: post /api/v1/vm/from_commit
+      delete: delete /api/v1/vm/{vm_id}
+      update_state: patch /api/v1/vm/{vm_id}/state
+      list: get /api/v1/vms
+      get_ssh_key: get /api/v1/vm/{vm_id}/ssh_key
+      status: get /api/v1/vm/{vm_id}/status
+      resize_disk: patch /api/v1/vm/{vm_id}/disk
+      get_metadata: get /api/v1/vm/{vm_id}/metadata
+      exec: post /api/v1/vm/{vm_id}/exec
+      exec_stream: post /api/v1/vm/{vm_id}/exec/stream
+      exec_stream_attach: post /api/v1/vm/{vm_id}/exec/stream/attach
+      get_logs: get /api/v1/vm/{vm_id}/logs
+  commits:
+    models:
+      commit_info: '#/components/schemas/CommitInfo'
+      list_commits_response: '#/components/schemas/ListCommitsResponse'
+      update_commit_request: '#/components/schemas/UpdateCommitRequest'
+    methods:
+      list: get /api/v1/commits
+      list_public: get /api/v1/commits/public
+      update: patch /api/v1/commits/{commit_id}
+      delete: delete /api/v1/commits/{commit_id}
+      list_parents: get /api/v1/vm/commits/{commit_id}/parents
+  commit_tags:
+    models:
+      create_tag_request: '#/components/schemas/CreateTagRequest'
+      create_tag_response: '#/components/schemas/CreateTagResponse'
+      tag_info: '#/components/schemas/TagInfo'
+      list_tags_response: '#/components/schemas/ListTagsResponse'
+      update_tag_request: '#/components/schemas/UpdateTagRequest'
+    methods:
+      create: post /api/v1/commit_tags
+      list: get /api/v1/commit_tags
+      get: get /api/v1/commit_tags/{tag_name}
+      update: patch /api/v1/commit_tags/{tag_name}
+      delete: delete /api/v1/commit_tags/{tag_name}
+  repositories:
+    models:
+      create_repository_request: '#/components/schemas/CreateRepositoryRequest'
+      create_repository_response: '#/components/schemas/CreateRepositoryResponse'
+      repository_info: '#/components/schemas/RepositoryInfo'
+      list_repositories_response: '#/components/schemas/ListRepositoriesResponse'
+      set_repository_visibility_request: '#/components/schemas/SetRepositoryVisibilityRequest'
+      fork_repository_request: '#/components/schemas/ForkRepositoryRequest'
+      fork_repository_response: '#/components/schemas/ForkRepositoryResponse'
+      create_repo_tag_request: '#/components/schemas/CreateRepoTagRequest'
+      create_repo_tag_response: '#/components/schemas/CreateRepoTagResponse'
+      repo_tag_info: '#/components/schemas/RepoTagInfo'
+      list_repo_tags_response: '#/components/schemas/ListRepoTagsResponse'
+      update_repo_tag_request: '#/components/schemas/UpdateRepoTagRequest'
+    methods:
+      create: post /api/v1/repositories
+      list: get /api/v1/repositories
+      get: get /api/v1/repositories/{repo_name}
+      delete: delete /api/v1/repositories/{repo_name}
+      set_visibility: patch /api/v1/repositories/{repo_name}/visibility
+      fork: post /api/v1/repositories/fork
+      create_tag: post /api/v1/repositories/{repo_name}/tags
+      list_tags: get /api/v1/repositories/{repo_name}/tags
+      get_tag: get /api/v1/repositories/{repo_name}/tags/{tag_name}
+      update_tag: patch /api/v1/repositories/{repo_name}/tags/{tag_name}
+      delete_tag: delete /api/v1/repositories/{repo_name}/tags/{tag_name}
+  public_repositories:
+    models:
+      public_repository_info: '#/components/schemas/PublicRepositoryInfo'
+      list_public_repositories_response: '#/components/schemas/ListPublicRepositoriesResponse'
+    methods:
+      list: get /api/v1/public/repositories
+      get: get /api/v1/public/repositories/{org_name}/{repo_name}
+      list_tags: get /api/v1/public/repositories/{org_name}/{repo_name}/tags
+      get_tag: get /api/v1/public/repositories/{org_name}/{repo_name}/tags/{tag_name}
+
+settings:
+  # All generated integration tests that hit the prism mock http server are marked
+  # as skipped. Removing this setting or setting it to false enables tests, but
+  # doing so may result in test failures due to bugs in the test server.
+  disable_mock_tests: true
+  license: Apache-2.0
+
+# `client_settings` define settings for the API client, such as extra constructor
+# arguments (used for authentication), retry behavior, idempotency, etc.
+client_settings:
+  opts:
+    api_key:
+      type: string
+      read_env: VERS_API_KEY
+      nullable: true
+      auth:
+        security_scheme: bearer_auth
+
+security_schemes:
+  bearer_auth:
+    type: http
+    scheme: bearer
+    description: Bearer token in Authorization header
+
+security:
+  - bearer_auth: []
+
+# `readme` is used to configure the code snippets that will be rendered in the
+# README.md of various SDKs.
+readme:
+  example_requests:
+    default:
+      type: request
+      endpoint: post /api/v1/vm/new_root
+      params: {}
+      body:
+        vm_config:
+          kernel_name: default.bin
+          image_name: default
+          vcpu_count: 2
+          mem_size_mib: 4096
+          fs_size_mib: 10240
+    headline:
+      type: request
+      endpoint: post /api/v1/vm/new_root
+      params: {}
+      body:
+        vm_config:
+          kernel_name: default.bin
+          image_name: default

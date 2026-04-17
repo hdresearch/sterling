@@ -8,20 +8,41 @@ export interface {{class_name}}ClientOptions {
   baseUrl?: string;
   apiKey?: string;
   headers?: Record<string, string>;
+  /** Maximum number of retries on 5xx/network errors. Default: 2 */
+  maxRetries?: number;
+  /** Request timeout in milliseconds. Default: 30000 */
+  timeout?: number;
+}
+
+// Status codes that are retryable even though they are 4xx
+const RETRYABLE_STATUS_CODES = new Set([408, 409, 429]);
+
+function isRetryableStatus(status: number): boolean {
+  return status >= 500 || RETRYABLE_STATUS_CODES.has(status);
+}
+
+function retryDelay(retryCount: number): number {
+  const base = 500 * Math.pow(2, retryCount);
+  const jitter = Math.random() * base * 0.25;
+  return base + jitter;
 }
 
 export class {{class_name}}Client {
   private baseUrl: string;
   private apiKey?: string;
   private headers: Record<string, string>;
+  private maxRetries: number;
+  private timeout: number;
 
   constructor(options: {{class_name}}ClientOptions = {}) {
-    this.baseUrl = options.baseUrl ?? "{{base_url}}";
-    this.apiKey = options.apiKey;
+    this.baseUrl = options.baseUrl ?? process.env["VERS_BASE_URL"] ?? "{{base_url}}";
+    this.apiKey = options.apiKey ?? process.env["VERS_API_KEY"];
     this.headers = options.headers ?? {};
+    this.maxRetries = options.maxRetries ?? 2;
+    this.timeout = options.timeout ?? 30000;
   }
 
-  private async request<T = unknown>(method: string, path: string, body?: unknown): Promise<Response> {
+  private async request(method: string, path: string, body?: unknown): Promise<Response> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...this.headers,
@@ -29,54 +50,77 @@ export class {{class_name}}Client {
     if (this.apiKey) {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${path}`, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-    } catch (err) {
-      throw new APIConnectionError({ cause: err instanceof Error ? err : undefined });
-    }
-    if (!response.ok) {
-      let errorBody: object | undefined;
-      let errorMessage: string | undefined;
-      try {
-        const text = await response.text();
-        try {
-          errorBody = JSON.parse(text);
-        } catch {
-          errorMessage = text;
-        }
-      } catch {
-        // could not read body
+
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt - 1)));
       }
-      throw APIError.generate(response.status, errorBody, errorMessage, response.headers);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      try {
+        const response = await fetch(`${this.baseUrl}${path}`, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        });
+
+        if (isRetryableStatus(response.status) && attempt < this.maxRetries) {
+          lastError = new Error(`HTTP ${response.status}`);
+          continue;
+        }
+
+        if (!response.ok) {
+          let errorBody: object | undefined;
+          let errorMessage: string | undefined;
+          try {
+            const text = await response.text();
+            try { errorBody = JSON.parse(text); } catch { errorMessage = text; }
+          } catch {}
+          throw APIError.generate(response.status, errorBody, errorMessage, response.headers);
+        }
+
+        return response;
+      } catch (error) {
+        if (error instanceof APIError) throw error;
+        lastError = error;
+        if (attempt === this.maxRetries) {
+          throw new APIConnectionError({ cause: error instanceof Error ? error : undefined });
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
-    return response;
+
+    throw lastError;
   }
 
 {{#each operations}}
   /**
    * {{summary}}
    */
-  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
+  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}{{query_params_ts}}{{/if}}): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
 {{#if has_path_params}}
-    const path = `{{path_interpolate_ts}}`;
+    let url = `{{path_interpolate_ts}}`;
+{{else}}
+    let url = "{{path}}";
+{{/if}}
+{{#if has_query_params}}
+    const params = new URLSearchParams();
+{{#each query_params}}
+    if ({{name}} !== undefined) params.append("{{name}}", String({{name}}));
+{{/each}}
+    const qs = params.toString();
+    if (qs) url += "?" + qs;
+{{/if}}
 {{#if has_typed_response}}
-    const resp = await this.request("{{method}}", path{{#if has_body}}, body{{/if}});
+    const resp = await this.request("{{method}}", url{{#if has_body}}, body{{/if}});
     return resp.json() as Promise<{{response_type}}>;
 {{else}}
-    return this.request("{{method}}", path{{#if has_body}}, body{{/if}});
-{{/if}}
-{{else}}
-{{#if has_typed_response}}
-    const resp = await this.request("{{method}}", "{{path}}"{{#if has_body}}, body{{/if}});
-    return resp.json() as Promise<{{response_type}}>;
-{{else}}
-    return this.request("{{method}}", "{{path}}"{{#if has_body}}, body{{/if}});
-{{/if}}
+    return this.request("{{method}}", url{{#if has_body}}, body{{/if}});
 {{/if}}
   }
 
