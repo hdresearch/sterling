@@ -20,4 +20,10 @@ export interface RequestOptions {
    * An AbortSignal to cancel the request.
    */
   signal?: AbortSignal | null;
+
+  /**
+   * Additional options to pass to the underlying `fetch` call.
+   * These are merged on top of client-level fetchOptions.
+   */
+  fetchOptions?: RequestInit;
 }

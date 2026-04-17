@@ -36,6 +36,8 @@ export interface {{class_name}}ClientOptions {
   logLevel?: LogLevel;
   /** Custom fetch implementation for testing, proxying, or custom transport. */
   fetch?: typeof fetch;
+  /** Additional options to pass to every underlying `fetch` call (e.g. dispatcher, keepalive). */
+  fetchOptions?: RequestInit;
 }
 
 // Status codes that are retryable even though they are 4xx
@@ -73,6 +75,7 @@ export class {{class_name}}Client {
   private timeout: number;
   private logLevel: LogLevel;
   private fetchFn: typeof fetch;
+  private fetchOptions: RequestInit;
 
   // Resource accessors
 {{#each resources}}
@@ -87,6 +90,7 @@ export class {{class_name}}Client {
     this.timeout = options.timeout ?? 30000;
     this.logLevel = options.logLevel ?? parseLogLevel(getEnv("VERS_LOG")) ?? 'warn';
     this.fetchFn = options.fetch ?? globalThis.fetch;
+    this.fetchOptions = options.fetchOptions ?? {};
 
     // Initialize resources
 {{#each resources}}
@@ -201,7 +205,9 @@ export class {{class_name}}Client {
       }
 
       try {
+        const mergedFetchOptions = { ...this.fetchOptions, ...options?.fetchOptions };
         const response = await this.fetchFn(`${this.baseUrl}${path}`, {
+          ...mergedFetchOptions,
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
