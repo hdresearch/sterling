@@ -2,6 +2,11 @@
 name = "{{project_name}}"
 version = "{{project_version}}"
 edition = "2021"
+description = "SDK for {{spec_title}}"
+license = "MIT"
+repository = "https://github.com/hdresearch/rust-sdk"
+keywords = ["vers", "sdk", "api", "vm"]
+categories = ["api-bindings"]
 
 [dependencies]
 log = "0.4"

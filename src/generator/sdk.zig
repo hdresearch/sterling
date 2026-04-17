@@ -1384,7 +1384,7 @@ pub const SDKGenerator = struct {
     fn generatePython(self: *SDKGenerator, target: config.Config.Target) !void {
         const d = target.output_dir;
         self.makeDirRecursive(d) catch {};
-        const src = try std.fmt.allocPrint(self.allocator, "{s}/src", .{d});
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/vers_sdk", .{d});
         defer self.allocator.free(src);
         self.makeDirRecursive(src) catch {};
 
@@ -1394,10 +1394,10 @@ pub const SDKGenerator = struct {
         try ctx.putList("models", try self.buildModelContexts(ctx));
         try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
 
-        try self.renderTo("templates/python/client.py.template", d, "src/client.py", ctx);
-        try self.renderTo("templates/python/models.py.template", d, "src/models.py", ctx);
-        try self.renderTo("templates/python/errors.py.template", d, "src/errors.py", ctx);
-        try self.renderTo("templates/python/__init__.py.template", d, "src/__init__.py", ctx);
+        try self.renderTo("templates/python/client.py.template", d, "src/vers_sdk/client.py", ctx);
+        try self.renderTo("templates/python/models.py.template", d, "src/vers_sdk/models.py", ctx);
+        try self.renderTo("templates/python/errors.py.template", d, "src/vers_sdk/errors.py", ctx);
+        try self.renderTo("templates/python/__init__.py.template", d, "src/vers_sdk/__init__.py", ctx);
         try self.renderTo("templates/python/pyproject.toml.template", d, "pyproject.toml", ctx);
         try self.renderTo("templates/python/README.md.template", d, "README.md", ctx);
         const tests_dir = try std.fmt.allocPrint(self.allocator, "{s}/tests", .{d});

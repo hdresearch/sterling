@@ -13,8 +13,8 @@ import os
 # Add src to path so we can import the generated client
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from client import {{class_name}}Client
-from errors import APIError, BadRequestError, NotFoundError, InternalServerError
+from vers_sdk.client import {{class_name}}Client
+from vers_sdk.errors import APIError, BadRequestError, NotFoundError, InternalServerError
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

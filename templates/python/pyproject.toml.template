@@ -3,8 +3,17 @@ name = "{{package_name}}"
 version = "{{project_version}}"
 description = "SDK for {{spec_title}}"
 requires-python = ">=3.10"
+license = "MIT"
+keywords = ["vers", "sdk", "api", "vm", "orchestration"]
 dependencies = ["httpx>=0.24"]
+
+[project.urls]
+Homepage = "https://github.com/hdresearch/python-sdk"
+Repository = "https://github.com/hdresearch/python-sdk"
 
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
