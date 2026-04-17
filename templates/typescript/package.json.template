@@ -6,10 +6,12 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "jest"
+    "test": "npx tsx tests/client.test.ts"
   },
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "*"
+    "@types/node": "*",
+    "tsx": "*",
+    "vitest": "^3.1.1"
   }
 }
