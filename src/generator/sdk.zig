@@ -441,8 +441,10 @@ pub const SDKGenerator = struct {
                         // Rust-safe field name (avoid keyword 'ref')
                         if (std.mem.eql(u8, vprop.name, "ref")) {
                             try vpc.putString("rust_name", "ref_field");
+                            try vpc.putBool("is_renamed", true);
                         } else {
                             try vpc.putString("rust_name", vprop.name);
+                            try vpc.putBool("is_renamed", false);
                         }
                         vprop_ctxs[vpi] = vpc;
                     }
