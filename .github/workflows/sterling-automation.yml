@@ -198,7 +198,7 @@ jobs:
         cd generated/typescript
         npm install
         npx tsc
-        npm publish --access public --provenance || echo "⚠️ npm publish skipped (version may already exist)"
+        npm publish --access public || echo "⚠️ npm publish skipped (version may already exist)"
 
     # --- PyPI (Python) — Trusted publishing via OIDC ---
     - name: Setup Python
