@@ -229,6 +229,7 @@ pub const SDKGenerator = struct {
                         const has_query_params = query_params_list.items.len > 0;
                         try c.putBool("has_query_params", has_query_params);
                         try c.putBool("query_needs_comma", has_query_params and (has_path_params or has_body));
+                        try c.putBool("has_any_params", has_path_params or has_body or has_query_params);
                         if (has_query_params) {
                             const qp_slice = try query_params_list.toOwnedSlice();
                             try c.putList("query_params", @ptrCast(qp_slice));
@@ -404,6 +405,7 @@ pub const SDKGenerator = struct {
             const params_type = try std.fmt.allocPrint(self.allocator, ", params: Option<&{s}Params>", .{pascal_name});
             try buf.appendSlice(params_type);
         }
+        try buf.appendSlice(", options: Option<&RequestOptions>");
         return try buf.toOwnedSlice();
     }
 
@@ -493,7 +495,11 @@ pub const SDKGenerator = struct {
         if (has_qp) {
             if (has_prev) try buf.appendSlice(", ");
             try buf.appendSlice("None");
+            has_prev = true;
         }
+        // None for Option<&RequestOptions>
+        if (has_prev) try buf.appendSlice(", ");
+        try buf.appendSlice("None");
         return try buf.toOwnedSlice();
     }
 

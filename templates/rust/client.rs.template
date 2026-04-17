@@ -4,7 +4,18 @@
 use reqwest::Client as HttpClient;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use crate::models::*;
+use std::collections::HashMap;
 use std::time::Duration;
+
+/// Per-request options that override client defaults.
+#[derive(Debug, Clone, Default)]
+pub struct RequestOptions {
+    /// Additional headers to send with the request.
+    /// Set a header value to an empty string to remove it.
+    pub headers: Option<HashMap<String, String>>,
+    /// Request timeout override.
+    pub timeout: Option<Duration>,
+}
 
 /// Log level for the SDK client, matching VERS_LOG env var values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -151,6 +162,7 @@ impl Client {
         if self.log_level >= LogLevel::Debug {
             log::debug!("request: {{method}} {}", url);
         }
+        let effective_timeout = options.and_then(|o| o.timeout).unwrap_or(self.timeout);
         let idempotency_key = {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -182,12 +194,19 @@ impl Client {
             if is_mutating {
                 default_headers.insert("x-idempotency-key", HeaderValue::from_str(&idempotency_key).unwrap());
             }
-            // Merge default headers with client-level headers (client headers override defaults)
+            // Merge default, client-level, and per-request headers
             let client_overrides: Vec<(HeaderName, Option<HeaderValue>)> = self.headers.iter()
                 .map(|(k, v)| (k.clone(), Some(v.clone())))
                 .collect();
             let merged = merge_headers(&default_headers, &client_overrides);
-            let mut req = self.http.{{method_lower}}(&url).timeout(self.timeout).headers(merged);
+            let mut req = self.http.{{method_lower}}(&url).timeout(effective_timeout).headers(merged);
+            if let Some(opts) = options {
+                if let Some(ref hdrs) = opts.headers {
+                    for (k, v) in hdrs {
+                        req = req.header(k.as_str(), v.as_str());
+                    }
+                }
+            }
 {{#if has_body}}
             req = req.json(body);
 {{/if}}

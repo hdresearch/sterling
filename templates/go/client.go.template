@@ -49,6 +49,14 @@ func parseLogLevel(s string) LogLevel {
 	}
 }
 
+// RequestOptions provides per-request overrides for headers and timeout.
+type RequestOptions struct {
+	// Headers to merge with the request. Nil-valued entries are ignored.
+	Headers map[string]string
+	// Timeout overrides the client-level timeout when non-zero.
+	Timeout time.Duration
+}
+
 type Client struct {
 	BaseURL    string
 	APIKey     string
@@ -181,7 +189,14 @@ func generateIdempotencyKey() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-func (c *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
+func (c *Client) doRequest(method, path string, body interface{}, opts ...*RequestOptions) (*http.Response, error) {
+	var opt *RequestOptions
+	for _, o := range opts {
+		if o != nil {
+			opt = o
+			break
+		}
+	}
 	c.logf(LogDebug, "request: %s %s", method, path)
 	idempotencyKey := ""
 	if isMutatingMethod(method) {
@@ -218,10 +233,20 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 			defaultHeaders.Set("X-Idempotency-Key", idempotencyKey)
 		}
 		req.Header = mergeHeaders(defaultHeaders, c.Headers)
+		// Apply per-request header overrides
+		if opt != nil {
+			for k, v := range opt.Headers {
+				req.Header.Set(k, v)
+			}
+		}
 
+		effectiveTimeout := c.Timeout
+		if opt != nil && opt.Timeout > 0 {
+			effectiveTimeout = opt.Timeout
+		}
 		client := c.HTTPClient
-		if client.Timeout == 0 && c.Timeout > 0 {
-			client = &http.Client{Timeout: c.Timeout}
+		if client.Timeout == 0 && effectiveTimeout > 0 {
+			client = &http.Client{Timeout: effectiveTimeout}
 		}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -255,7 +280,7 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 
 {{#each operations}}
 // {{pascal_name}} - {{summary}}
-func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params *{{params_type_name}}{{/if}}) (*http.Response, error) {
+func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params *{{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}opts ...*RequestOptions) (*http.Response, error) {
 {{#if has_path_params}}
 	reqPath := fmt.Sprintf("{{path_interpolate_go}}", {{go_format_args}})
 {{else}}
@@ -274,7 +299,7 @@ func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if 
 		reqPath += "?" + qs
 	}
 {{/if}}
-	return c.doRequest("{{method}}", reqPath{{#if has_body}}, body{{else}}, nil{{/if}})
+	return c.doRequest("{{method}}", reqPath{{#if has_body}}, body{{else}}, nil{{/if}}, opts...)
 }
 
 {{/each}}
