@@ -3,6 +3,7 @@
 
 import type { {{#each models}}{{#unless is_enum}}{{name}}, {{/unless}}{{#if is_enum}}{{name}}, {{/if}}{{/each}}{{#each params_types}}{{name}}, {{/each}} } from "./models";
 import { APIError, APIConnectionError } from "./errors";
+import { getEnv, detectRuntime, getDefaultFetch } from "./shims";
 {{#each resources}}
 import { {{resource_class}} } from "{{import_path}}";
 {{/each}}
@@ -61,12 +62,12 @@ export class {{class_name}}Client {
 {{/each}}
 
   constructor(options: {{class_name}}ClientOptions = {}) {
-    this.baseUrl = options.baseUrl ?? process.env["VERS_BASE_URL"] ?? "{{base_url}}";
-    this.apiKey = options.apiKey ?? process.env["VERS_API_KEY"];
+    this.baseUrl = options.baseUrl ?? getEnv("VERS_BASE_URL") ?? "{{base_url}}";
+    this.apiKey = options.apiKey ?? getEnv("VERS_API_KEY");
     this.headers = options.headers ?? {};
     this.maxRetries = options.maxRetries ?? 2;
     this.timeout = options.timeout ?? 30000;
-    this.logLevel = options.logLevel ?? parseLogLevel(process.env["VERS_LOG"]) ?? 'warn';
+    this.logLevel = options.logLevel ?? parseLogLevel(getEnv("VERS_LOG")) ?? 'warn';
 
     // Initialize resources
 {{#each resources}}
@@ -87,10 +88,27 @@ export class {{class_name}}Client {
   }
 
   private get userAgent(): string {
-    const rt = typeof globalThis !== "undefined" && "Deno" in globalThis
-      ? `deno/${(globalThis as any).Deno?.version?.deno ?? "unknown"}`
-      : typeof process !== "undefined" ? `node/${process.versions?.node ?? "unknown"}`
-      : "unknown-runtime";
+    const runtime = detectRuntime();
+    let rt: string;
+    switch (runtime) {
+      case "deno":
+        rt = `deno/${(globalThis as any).Deno?.version?.deno ?? "unknown"}`;
+        break;
+      case "bun":
+        rt = `bun/${(globalThis as any).Bun?.version ?? "unknown"}`;
+        break;
+      case "node":
+        rt = `node/${process.versions?.node ?? "unknown"}`;
+        break;
+      case "edge":
+        rt = "edge-runtime";
+        break;
+      case "browser":
+        rt = "browser";
+        break;
+      default:
+        rt = "unknown-runtime";
+    }
     const os = typeof process !== "undefined"
       ? `${process.platform ?? "unknown"}/${process.arch ?? "unknown"}`
       : "unknown-os";
@@ -119,7 +137,8 @@ export class {{class_name}}Client {
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
       try {
-        const response = await fetch(`${this.baseUrl}${path}`, {
+        const fetchFn = getDefaultFetch();
+        const response = await fetchFn(`${this.baseUrl}${path}`, {
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
