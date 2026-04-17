@@ -203,8 +203,41 @@ pub const SDKGenerator = struct {
                             try c.putBool("has_typed_response", false);
                         }
 
+                        // Query params
+                        var query_params_list = std.array_list.Managed(*template.Context).init(self.allocator);
+                        for (op.parameters.items) |param| {
+                            if (param.in == .query) {
+                                const qc = try self.allocator.create(template.Context);
+                                qc.* = template.Context.init(self.allocator);
+                                qc.parent = c;
+                                try qc.putString("name", param.name);
+                                try qc.putString("description", self.sanitiseOneLine(param.description orelse ""));
+                                try qc.putBool("required", param.required);
+                                const schema_type = param.schema_type orelse "string";
+                                try qc.putString("ts_type", self.queryParamTypeTS(schema_type));
+                                try qc.putString("py_type", self.queryParamTypePython(schema_type));
+                                try qc.putString("go_type", self.queryParamTypeGo(schema_type));
+                                try qc.putString("rust_type", self.queryParamTypeRust(schema_type));
+                                // Go format helper: how to convert to string for URL
+                                try qc.putString("go_format", self.queryParamGoFormat(param.name, schema_type));
+                                try query_params_list.append(qc);
+                            }
+                        }
+                        const has_query_params = query_params_list.items.len > 0;
+                        try c.putBool("has_query_params", has_query_params);
+                        try c.putBool("query_needs_comma", has_query_params and (has_path_params or has_body));
+                        if (has_query_params) {
+                            const qp_slice = try query_params_list.toOwnedSlice();
+                            try c.putList("query_params", @ptrCast(qp_slice));
+                            // Build per-language param strings for function signatures
+                            try c.putString("query_params_ts", try self.buildQueryParamStringTS(op));
+                            try c.putString("query_params_py", try self.buildQueryParamStringPython(op));
+                            try c.putString("query_params_go", try self.buildQueryParamStringGo(op));
+                            try c.putString("query_params_rust", try self.buildQueryParamStringRust(op));
+                        }
+
                         // Rust fn_params
-                        try c.putString("fn_params", try self.buildRustFnParams(has_path_params, has_body, op));
+                        try c.putString("fn_params", try self.buildRustFnParams(has_path_params, has_body, has_query_params, op));
 
                         ops[idx] = c;
                         idx += 1;
@@ -315,11 +348,10 @@ pub const SDKGenerator = struct {
         };
     }
 
-    fn buildRustFnParams(self: *SDKGenerator, has_path_params: bool, has_body: bool, op: parser.Operation) ![]const u8 {
+    fn buildRustFnParams(self: *SDKGenerator, has_path_params: bool, has_body: bool, has_query_params: bool, op: parser.Operation) ![]const u8 {
         var buf = std.array_list.Managed(u8).init(self.allocator);
         try buf.appendSlice("&self");
         if (has_path_params) {
-            // Add each path param
             for (op.parameters.items) |param| {
                 if (param.in == .path) {
                     try buf.appendSlice(", ");
@@ -338,6 +370,134 @@ pub const SDKGenerator = struct {
                 }
             } else {
                 try buf.appendSlice(", body: &impl serde::Serialize");
+            }
+        }
+        if (has_query_params) {
+            for (op.parameters.items) |param| {
+                if (param.in == .query) {
+                    try buf.appendSlice(", ");
+                    try buf.appendSlice(param.name);
+                    try buf.appendSlice(": Option<");
+                    try buf.appendSlice(self.queryParamTypeRust(param.schema_type orelse "string"));
+                    try buf.appendSlice(">");
+                }
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    // ── Query param type helpers ─────────────────────────────────────────
+
+    fn rustSafeName(self: *SDKGenerator, name: []const u8) ![]const u8 {
+        const rust_keywords = [_][]const u8{
+            "as", "break", "const", "continue", "crate", "else", "enum",
+            "extern", "false", "fn", "for", "if", "impl", "in", "let",
+            "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
+            "self", "Self", "static", "struct", "super", "trait", "true",
+            "type", "unsafe", "use", "where", "while", "async", "await",
+            "dyn", "abstract", "become", "box", "do", "final", "macro",
+            "override", "priv", "typeof", "unsized", "virtual", "yield",
+        };
+        for (rust_keywords) |kw| {
+            if (std.mem.eql(u8, name, kw)) {
+                return try std.fmt.allocPrint(self.allocator, "r#{s}", .{name});
+            }
+        }
+        return name;
+    }
+
+    fn queryParamTypeTS(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "boolean";
+        if (std.mem.eql(u8, schema_type, "integer")) return "number";
+        if (std.mem.eql(u8, schema_type, "number")) return "number";
+        return "string";
+    }
+
+    fn queryParamTypePython(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "bool";
+        if (std.mem.eql(u8, schema_type, "integer")) return "int";
+        if (std.mem.eql(u8, schema_type, "number")) return "float";
+        return "str";
+    }
+
+    fn queryParamTypeGo(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "*bool";
+        if (std.mem.eql(u8, schema_type, "integer")) return "*int64";
+        if (std.mem.eql(u8, schema_type, "number")) return "*float64";
+        return "*string";
+    }
+
+    fn queryParamTypeRust(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "bool";
+        if (std.mem.eql(u8, schema_type, "integer")) return "i64";
+        if (std.mem.eql(u8, schema_type, "number")) return "f64";
+        return "String";
+    }
+
+    fn queryParamGoFormat(_: *SDKGenerator, name: []const u8, schema_type: []const u8) []const u8 {
+        // Returns the Go format expression e.g. fmt.Sprintf("%v", *name)
+        _ = name;
+        _ = schema_type;
+        return "%v";
+    }
+
+    fn buildQueryParamStringTS(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(param.name);
+                try buf.appendSlice("?: ");
+                try buf.appendSlice(self.queryParamTypeTS(param.schema_type orelse "string"));
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildQueryParamStringPython(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(param.name);
+                try buf.appendSlice(": ");
+                try buf.appendSlice(self.queryParamTypePython(param.schema_type orelse "string"));
+                try buf.appendSlice(" | None = None");
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildQueryParamStringGo(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(param.name);
+                try buf.appendSlice(" ");
+                try buf.appendSlice(self.queryParamTypeGo(param.schema_type orelse "string"));
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildQueryParamStringRust(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(param.name);
+                try buf.appendSlice(": Option<");
+                try buf.appendSlice(self.queryParamTypeRust(param.schema_type orelse "string"));
+                try buf.appendSlice(">");
             }
         }
         return try buf.toOwnedSlice();
@@ -463,6 +623,8 @@ pub const SDKGenerator = struct {
                     pc.* = template.Context.init(self.allocator);
                     pc.parent = m;
                     try pc.putString("name", prop.name);
+                    // Rust-safe name (prefix with r# if keyword)
+                    try pc.putString("rust_name", try self.rustSafeName(prop.name));
                     var prop_pascal_buf: [256]u8 = undefined;
                     try pc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(prop.name, &prop_pascal_buf)));
                     try pc.putBool("required", prop.required);

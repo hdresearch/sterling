@@ -44,7 +44,8 @@ pub struct {{name}} {
     /// {{description}}
 {{/if}}
     {{#unless required}}#[serde(skip_serializing_if = "Option::is_none")]
-    {{/unless}}pub {{name}}: {{#if required}}{{rust_type}}{{else}}Option<{{rust_type}}>{{/if}},
+    {{/unless}}#[serde(rename = "{{name}}")]
+    pub {{rust_name}}: {{#if required}}{{rust_type}}{{else}}Option<{{rust_type}}>{{/if}},
 {{/each}}
 }
 
