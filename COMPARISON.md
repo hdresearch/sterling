@@ -42,13 +42,17 @@ Sterling covers more API surface because it generates from the full orchestrator
 | `Retry-After` header parsing         | ✅        | ✅       |
 | Configurable timeout                 | ✅        | ✅       |
 | `APIPromise` / `.withResponse()`     | ✅        | ✅       |
+| `APIPromise.asResponse()`            | ✅        | ✅       |
 | Per-request `RequestOptions`         | ✅        | ✅       |
 | Typed error hierarchy (400–5xx)      | ✅        | ✅       |
 | Idempotency keys (`X-Idempotency-Key`) | ✅     | ✅       |
 | Custom `fetch` / HTTP client         | ✅        | ✅       |
+| `fetchOptions` passthrough           | ✅        | ✅       |
 | Header merging (null = remove)       | ✅        | ✅       |
 | Platform detection / `User-Agent`    | ✅        | ✅       |
 | Configurable logging (`VERS_LOG`)    | ✅        | ✅       |
+| Custom logger injection              | ✅        | ✅       |
+| Raw HTTP helpers (`get`/`post`/…)    | ✅        | ✅       |
 
 ### SDK organization
 
@@ -62,15 +66,11 @@ Sterling covers more API surface because it generates from the full orchestrator
 
 ### Stainless-only features
 
-These are present in the Stainless SDK but not in Sterling. None affect API call functionality.
-
 | Feature                              | Notes |
 | ------------------------------------ | ----- |
 | File upload support                  | The Vers API has no upload endpoints — this is dead code in Stainless. |
-| `fetchOptions` passthrough           | Sterling supports custom `fetch` function instead. |
-| Custom logger injection              | Sterling logs to console with configurable level; no pluggable logger interface. |
-| `APIPromise.asResponse()`            | Sterling has `APIPromise.withResponse()` but not the non-consuming variant. |
-| Undocumented endpoint helpers        | `client.get()`, `client.post()` for raw HTTP — not generated from spec. |
+
+All other Stainless features now have Sterling equivalents.
 
 ### Sterling-only features
 
@@ -169,5 +169,6 @@ Sterling's feature set was built in three waves using parallel VM agents ("code 
 - **Wave 1** (5 agents): Query params, doc comments, error types, retries, union types
 - **Wave 2** (6 agents): Resources, tests, SSH library, request options, params types, logging
 - **Wave 3** (7 agents): RequestOptions threading, retry-after, idempotency, nested types, custom fetch, header merge, shims
+- **Wave 4** (4 agents): fetchOptions passthrough, custom logger injection, `asResponse()`, raw HTTP helpers
 
-Each wave branched VMs from a golden snapshot, ran autonomous coding agents in parallel, then merged results with manual conflict resolution. 18 agents total, all producing code that compiles clean across all 4 target languages.
+Each wave branched VMs from a golden snapshot, ran autonomous coding agents in parallel, then merged results with manual conflict resolution. 22 agents total, all producing code that compiles clean across all 4 target languages.
