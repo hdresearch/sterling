@@ -919,6 +919,8 @@ pub const SDKGenerator = struct {
         // Render resource index
         try self.renderTo("templates/typescript/resource-index.ts.template", d, "src/resources/index.ts", ctx);
 
+        try self.renderTo("templates/typescript/request-options.ts.template", d, "src/request-options.ts", ctx);
+        try self.renderTo("templates/typescript/api-promise.ts.template", d, "src/api-promise.ts", ctx);
         try self.renderTo("templates/typescript/client.ts.template", d, "src/client.ts", ctx);
         try self.renderTo("templates/typescript/models.ts.template", d, "src/models.ts", ctx);
         try self.renderTo("templates/typescript/errors.ts.template", d, "src/errors.ts", ctx);
