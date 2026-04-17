@@ -78,7 +78,7 @@ public class VersClient implements AutoCloseable {
     /**
      * {{summary}}
      */
-    public HttpResponse<String> {{camel_name}}({{#if has_path_params}}{{path_params_java}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}Map<String, Object> body{{/if}}{{#if has_query_params}}{{#if has_path_params}}, {{else}}{{#if has_body}}, {{/if}}{{/if}}Models.{{params_type_name}} params{{/if}}{{#if has_any_params}}, {{/if}}RequestOptions options) throws IOException, InterruptedException {
+    public HttpResponse<String> {{camel_name}}({{#if has_path_params}}{{path_params_java}}, {{/if}}{{#if has_body}}Map<String, Object> body, {{/if}}{{#if has_query_params}}Models.{{params_type_name}} params, {{/if}}RequestOptions options) throws IOException, InterruptedException {
 {{#if has_path_params}}
         String path = String.format("{{path_interpolate_go}}", {{go_format_args}});
 {{else}}

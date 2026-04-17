@@ -195,7 +195,7 @@ class {{class_name}}Client(
     /**
      * {{summary}}
      */
-    suspend fun {{camel_name}}({{#if has_path_params}}{{path_params_kotlin}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}Map<String, Any?>{{else}}Map<String, Any?>? = null{{/if}}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params: {{params_type_name}}? = null{{/if}}{{#if has_any_params}}, {{/if}}options: RequestOptions? = null): HttpResponse<String> {
+    suspend fun {{camel_name}}({{#if has_path_params}}{{path_params_kotlin}}, {{/if}}{{#if has_body}}body: Map<String, Any?>? = null, {{/if}}{{#if has_query_params}}params: {{params_type_name}}? = null, {{/if}}options: RequestOptions? = null): HttpResponse<String> {
 {{#if has_path_params}}
         val path = String.format("{{path_interpolate_go}}", {{go_format_args}})
 {{else}}

@@ -278,7 +278,7 @@ namespace VersSdk
 
 {{#each operations}}
         /// <summary>{{summary}}</summary>
-        public async Task<HttpResponseMessage> {{pascal_name}}Async({{#if has_path_params}}{{path_params_csharp}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}object? body = null{{#if has_query_params}}, {{/if}}{{/if}}{{#if has_query_params}}{{params_type_name}}? queryParams = null{{/if}}{{#if has_any_params}}, {{/if}}RequestOptions? options = null, CancellationToken cancellationToken = default)
+        public async Task<HttpResponseMessage> {{pascal_name}}Async({{#if has_path_params}}{{path_params_csharp}}, {{/if}}{{#if has_body}}object? body = null, {{/if}}{{#if has_query_params}}{{params_type_name}}? queryParams = null, {{/if}}RequestOptions? options = null, CancellationToken cancellationToken = default)
         {
 {{#if has_path_params}}
             var path = $"{{path_interpolate_csharp}}";
