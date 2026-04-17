@@ -62,8 +62,8 @@ jobs:
       run: |
         cd generated/typescript
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update TypeScript SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/ts-sdk.git
@@ -76,8 +76,8 @@ jobs:
       run: |
         cd generated/rust
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update Rust SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/rust-sdk.git
@@ -90,8 +90,8 @@ jobs:
       run: |
         cd generated/python
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update Python SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/python-sdk.git
@@ -104,8 +104,8 @@ jobs:
       run: |
         cd generated/go
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update Go SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/go-sdk.git
@@ -118,8 +118,8 @@ jobs:
       run: |
         cd generated/java
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update Java SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/java-sdk.git
@@ -132,8 +132,8 @@ jobs:
       run: |
         cd generated/kotlin
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update Kotlin SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/kotlin-sdk.git
@@ -146,8 +146,8 @@ jobs:
       run: |
         cd generated/ruby
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update Ruby SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/ruby-sdk.git
@@ -160,8 +160,8 @@ jobs:
       run: |
         cd generated/php
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update PHP SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/php-sdk.git
@@ -174,8 +174,8 @@ jobs:
       run: |
         cd generated/csharp
         git init
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git add -A
         git commit -m "Update C# SDK from OpenAPI spec" || exit 0
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/csharp-sdk.git
@@ -316,8 +316,8 @@ jobs:
         BRANCH_NAME="sterling/update-api-docs-$(date +%Y%m%d-%H%M%S)"
         git clone https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/vers-docs.git vers-docs
         cd vers-docs
-        git config user.name "Sterling Bot"
-        git config user.email "sterling@hdresearch.com"
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
         git checkout -b "$BRANCH_NAME"
         mkdir -p docs/api/chelsea
         cp ../chelsea/openapi/orchestrator.openapi.json docs/api/chelsea/openapi.json 2>/dev/null || true
