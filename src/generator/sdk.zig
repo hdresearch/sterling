@@ -770,6 +770,8 @@ pub const SDKGenerator = struct {
         try ctx.putList("operations", try self.buildOperationContexts(ctx));
         try ctx.putList("models", try self.buildModelContexts(ctx));
 
+        try self.renderTo("templates/typescript/request-options.ts.template", d, "src/request-options.ts", ctx);
+        try self.renderTo("templates/typescript/api-promise.ts.template", d, "src/api-promise.ts", ctx);
         try self.renderTo("templates/typescript/client.ts.template", d, "src/client.ts", ctx);
         try self.renderTo("templates/typescript/models.ts.template", d, "src/models.ts", ctx);
         try self.renderTo("templates/typescript/errors.ts.template", d, "src/errors.ts", ctx);

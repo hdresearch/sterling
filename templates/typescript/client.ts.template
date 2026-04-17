@@ -3,6 +3,8 @@
 
 import type { {{#each models}}{{#unless is_enum}}{{name}}, {{/unless}}{{#if is_enum}}{{name}}, {{/if}}{{/each}} } from "./models";
 import { APIError, APIConnectionError } from "./errors";
+import type { RequestOptions } from "./request-options";
+import { APIPromise } from "./api-promise";
 
 export interface {{class_name}}ClientOptions {
   baseUrl?: string;
@@ -42,7 +44,7 @@ export class {{class_name}}Client {
     this.timeout = options.timeout ?? 30000;
   }
 
-  private async request(method: string, path: string, body?: unknown): Promise<Response> {
+  private async request(method: string, path: string, body?: unknown, options?: RequestOptions): Promise<Response> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...this.headers,
@@ -50,6 +52,18 @@ export class {{class_name}}Client {
     if (this.apiKey) {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
+    // Merge per-request headers; null values remove the header
+    if (options?.headers) {
+      for (const [key, value] of Object.entries(options.headers)) {
+        if (value === null) {
+          delete headers[key];
+        } else {
+          headers[key] = value;
+        }
+      }
+    }
+    const timeout = options?.timeout ?? this.timeout;
+    const signal = options?.signal !== undefined ? (options.signal ?? undefined) : undefined;
 
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -58,7 +72,10 @@ export class {{class_name}}Client {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      if (signal) {
+        signal.addEventListener("abort", () => controller.abort(), { once: true });
+      }
 
       try {
         const response = await fetch(`${this.baseUrl}${path}`, {
@@ -102,7 +119,7 @@ export class {{class_name}}Client {
   /**
    * {{summary}}
    */
-  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}{{query_params_ts}}{{/if}}): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
+  {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}{{query_params_ts}}{{/if}}{{#if has_path_params}}, options?: RequestOptions{{else}}{{#if has_body}}, options?: RequestOptions{{else}}{{#if has_query_params}}, options?: RequestOptions{{else}}options?: RequestOptions{{/if}}{{/if}}{{/if}}): APIPromise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
 {{#if has_path_params}}
     let url = `{{path_interpolate_ts}}`;
 {{else}}
@@ -117,10 +134,11 @@ export class {{class_name}}Client {
     if (qs) url += "?" + qs;
 {{/if}}
 {{#if has_typed_response}}
-    const resp = await this.request("{{method}}", url{{#if has_body}}, body{{/if}});
-    return resp.json() as Promise<{{response_type}}>;
+    const responsePromise = this.request("{{method}}", url{{#if has_body}}, body{{else}}, undefined{{/if}}, options);
+    return APIPromise.fromResponse<{{response_type}}>(responsePromise);
 {{else}}
-    return this.request("{{method}}", url{{#if has_body}}, body{{/if}});
+    const responsePromise = this.request("{{method}}", url{{#if has_body}}, body{{else}}, undefined{{/if}}, options);
+    return APIPromise.fromRawResponse(responsePromise);
 {{/if}}
   }
 

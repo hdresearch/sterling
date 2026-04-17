@@ -3,6 +3,8 @@
 
 export { {{class_name}}Client } from "./client";
 export type { {{class_name}}ClientOptions } from "./client";
+export type { RequestOptions } from "./request-options";
+export { APIPromise } from "./api-promise";
 export * from "./models";
 export {
   VersSDKError,
