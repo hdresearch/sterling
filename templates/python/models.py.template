@@ -4,7 +4,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 {{#each models}}
 {{#if is_enum}}
@@ -12,6 +12,19 @@ class {{name}}(str, Enum):
 {{#each enum_values}}
     {{upper_value}} = "{{value}}"
 {{/each}}
+
+{{else}}
+{{#if is_union}}
+{{#each variants}}
+@dataclass
+class {{name}}{{variant_pascal}}Variant:
+    """{{description}}"""
+{{#each properties}}
+    {{name}}: {{py_type}}
+{{/each}}
+
+{{/each}}
+{{name}} = Union[{{#each variants}}{{name}}{{variant_pascal}}Variant{{#unless is_last}}, {{/unless}}{{/each}}]
 
 {{else}}
 {{#if has_properties}}
@@ -28,6 +41,7 @@ class {{name}}:
     """{{description}}"""
     data: dict[str, Any] = field(default_factory=dict)
 
+{{/if}}
 {{/if}}
 {{/if}}
 {{/each}}

@@ -110,6 +110,17 @@ pub const SchemaProperty = struct {
     items_type: ?[]const u8 = null,
 };
 
+/// Represents one variant of a oneOf union type.
+pub const OneOfVariant = struct {
+    properties: std.array_list.Managed(SchemaProperty),
+    required_fields: std.array_list.Managed([]const u8),
+
+    pub fn deinit(self: *OneOfVariant) void {
+        self.properties.deinit();
+        self.required_fields.deinit();
+    }
+};
+
 pub const Schema = struct {
     type_name: ?[]const u8 = null,
     format: ?[]const u8 = null,
@@ -119,11 +130,17 @@ pub const Schema = struct {
     enum_values: std.array_list.Managed([]const u8),
     /// For $ref at schema level
     ref: ?[]const u8 = null,
+    /// oneOf variants (union types)
+    one_of_variants: std.array_list.Managed(OneOfVariant),
 
     pub fn deinit(self: *Schema) void {
         self.properties.deinit();
         self.required_fields.deinit();
         self.enum_values.deinit();
+        for (self.one_of_variants.items) |*v| {
+            v.deinit();
+        }
+        self.one_of_variants.deinit();
     }
 };
 
@@ -443,6 +460,7 @@ fn parseSchema(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !Schema {
         .properties = std.array_list.Managed(SchemaProperty).init(allocator),
         .required_fields = std.array_list.Managed([]const u8).init(allocator),
         .enum_values = std.array_list.Managed([]const u8).init(allocator),
+        .one_of_variants = std.array_list.Managed(OneOfVariant).init(allocator),
     };
 
     if (obj.get("type")) |v| {
@@ -475,6 +493,65 @@ fn parseSchema(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !Schema {
             for (enum_val.array.items) |item| {
                 if (item == .string) {
                     try schema.enum_values.append(try allocator.dupe(u8, item.string));
+                }
+            }
+        }
+    }
+
+    // Parse oneOf variants
+    if (obj.get("oneOf")) |one_of_val| {
+        if (one_of_val == .array) {
+            for (one_of_val.array.items) |variant_val| {
+                if (variant_val == .object) {
+                    var variant = OneOfVariant{
+                        .properties = std.array_list.Managed(SchemaProperty).init(allocator),
+                        .required_fields = std.array_list.Managed([]const u8).init(allocator),
+                    };
+                    // Parse required fields for variant
+                    if (variant_val.object.get("required")) |req_val| {
+                        if (req_val == .array) {
+                            for (req_val.array.items) |item| {
+                                if (item == .string) {
+                                    try variant.required_fields.append(try allocator.dupe(u8, item.string));
+                                }
+                            }
+                        }
+                    }
+                    // Parse properties for variant
+                    if (variant_val.object.get("properties")) |vprops| {
+                        if (vprops == .object) {
+                            var vprop_iter = vprops.object.iterator();
+                            while (vprop_iter.next()) |ventry| {
+                                var vprop = SchemaProperty{
+                                    .name = try allocator.dupe(u8, ventry.key_ptr.*),
+                                };
+                                // Check if required
+                                for (variant.required_fields.items) |req_name| {
+                                    if (std.mem.eql(u8, req_name, ventry.key_ptr.*)) {
+                                        vprop.required = true;
+                                        break;
+                                    }
+                                }
+                                if (ventry.value_ptr.* == .object) {
+                                    const vpobj = ventry.value_ptr.object;
+                                    if (vpobj.get("type")) |t| {
+                                        if (t == .string) vprop.type_name = try allocator.dupe(u8, t.string);
+                                    }
+                                    if (vpobj.get("format")) |f| {
+                                        if (f == .string) vprop.format = try allocator.dupe(u8, f.string);
+                                    }
+                                    if (vpobj.get("description")) |d| {
+                                        if (d == .string) vprop.description = try allocator.dupe(u8, d.string);
+                                    }
+                                    if (vpobj.get("$ref")) |r| {
+                                        if (r == .string) vprop.ref = try allocator.dupe(u8, extractRefName(r.string));
+                                    }
+                                }
+                                try variant.properties.append(vprop);
+                            }
+                        }
+                    }
+                    try schema.one_of_variants.append(variant);
                 }
             }
         }

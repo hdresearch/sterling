@@ -14,6 +14,18 @@ const (
 )
 
 {{else}}
+{{#if is_union}}
+// {{description}}
+// This is a union type — exactly one field should be set.
+type {{name}} struct {
+{{#each variants}}
+{{#each properties}}
+	{{pascal_name}} *{{go_type}} `json:"{{name}},omitempty"`
+{{/each}}
+{{/each}}
+}
+
+{{else}}
 {{#if has_properties}}
 // {{description}}
 type {{name}} struct {
@@ -27,6 +39,7 @@ type {{name}} struct {
 	Data interface{} `json:"data,omitempty"`
 }
 
+{{/if}}
 {{/if}}
 {{/if}}
 {{/each}}

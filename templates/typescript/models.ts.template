@@ -6,11 +6,30 @@
 export type {{name}} = {{#each enum_values}}"{{value}}"{{#unless is_last}} | {{/unless}}{{/each}};
 
 {{else}}
+{{#if is_union}}
+export type {{name}} =
+{{#each variants}}
+  | {{name}}.{{variant_pascal}}
+{{/each}};
+
+export namespace {{name}} {
+{{#each variants}}
+  export interface {{variant_pascal}} {
+{{#each properties}}
+    {{name}}: {{ts_type}};
+{{/each}}
+  }
+
+{{/each}}
+}
+
+{{else}}
 export interface {{name}} {
 {{#each properties}}
   {{name}}{{#unless required}}?{{/unless}}: {{ts_type}};
 {{/each}}
 }
 
+{{/if}}
 {{/if}}
 {{/each}}

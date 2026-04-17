@@ -9,8 +9,9 @@ generated/
 .env
 .env.*
 
-# Do not embed other repos
-chelsea/
+# Do not embed other repos (but keep openapi specs)
+chelsea/*
+!chelsea/openapi/
 
 # Backup/temp files
 *.backup
@@ -29,3 +30,4 @@ Thumbs.db
 *.swp
 *.swo
 *~
+generated/
