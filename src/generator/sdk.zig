@@ -1156,6 +1156,7 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/rust/errors.rs.template", d, "src/errors.rs", ctx);
         try self.renderTo("templates/rust/lib.rs.template", d, "src/lib.rs", ctx);
         try self.renderTo("templates/rust/cargo.toml.template", d, "Cargo.toml", ctx);
+        try self.renderTo("templates/rust/README.md.template", d, "README.md", ctx);
         const tests_dir = try std.fmt.allocPrint(self.allocator, "{s}/tests", .{d});
         defer self.allocator.free(tests_dir);
         self.makeDirRecursive(tests_dir) catch {};
