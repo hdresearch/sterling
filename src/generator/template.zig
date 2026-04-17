@@ -77,34 +77,51 @@ pub const Engine = struct {
         return try buf.toOwnedSlice();
     }
 
-    fn renderInto(self: *Engine, buf: *std.array_list.Managed(u8), template: []const u8, context: *const Context) !void {
+    fn renderInto(self: *Engine, buf: *std.array_list.Managed(u8), tmpl: []const u8, context: *const Context) !void {
         var pos: usize = 0;
 
-        while (pos < template.len) {
+        while (pos < tmpl.len) {
             // Find next {{
-            if (indexOfFrom(template, pos, "{{")) |tag_start| {
-                // Output text before tag
-                try buf.appendSlice(template[pos..tag_start]);
-
+            if (indexOfFrom(tmpl, pos, "{{")) |tag_start| {
                 // Find matching }}
-                const tag_end = indexOfFrom(template, tag_start + 2, "}}") orelse {
-                    try buf.appendSlice(template[tag_start..]);
+                const tag_end = indexOfFrom(tmpl, tag_start + 2, "}}") orelse {
+                    try buf.appendSlice(tmpl[tag_start..]);
                     break;
                 };
 
-                const tag_content = std.mem.trim(u8, template[tag_start + 2 .. tag_end], " \t");
+                const tag_content = std.mem.trim(u8, tmpl[tag_start + 2 .. tag_end], " \t");
                 const after_tag = tag_end + 2;
+
+                // Detect whether this tag is a "block" directive
+                const is_block_tag = std.mem.startsWith(u8, tag_content, "#each ") or
+                    std.mem.startsWith(u8, tag_content, "#if ") or
+                    std.mem.startsWith(u8, tag_content, "#unless ") or
+                    (tag_content.len > 0 and tag_content[0] == '/');
+
+                // For block tags, check if they are standalone on their line
+                // (only whitespace before tag on the same line, and a newline after '}}')
+                // If so, strip the leading whitespace and trailing newline.
+                const standalone = if (is_block_tag) isStandalone(tmpl, pos, tag_start, after_tag, buf) else StandaloneInfo{ .is = false, .trim_start = tag_start, .skip_after = after_tag };
+
+                // Output text before tag (trimming whitespace for standalone block tags)
+                try buf.appendSlice(tmpl[pos..standalone.trim_start]);
 
                 if (std.mem.startsWith(u8, tag_content, "#each ")) {
                     const var_name = std.mem.trim(u8, tag_content[6..], " \t");
-                    const block = try findBlockEnd(template, after_tag, "each");
-                    pos = block.after;
+                    const block = try findBlockEnd(tmpl, after_tag, "each");
+                    // Handle standalone closing tag
+                    const close_sa = isStandalone(tmpl, block.body_end, block.body_end, block.after, buf);
+                    pos = close_sa.skip_after;
 
                     if (context.get(var_name)) |val| {
                         switch (val) {
                             .list => |items| {
+                                // Trim leading newline from block body if opening tag was standalone
+                                const body_start = if (standalone.is) skipNewline(tmpl, after_tag) else after_tag;
+                                // Trim trailing whitespace line before closing tag if it was standalone
+                                const body_end = if (close_sa.is) trimTrailingBlankPartial(tmpl, body_start, block.body_end) else block.body_end;
                                 for (items) |item| {
-                                    try self.renderInto(buf, template[after_tag..block.body_end], item);
+                                    try self.renderInto(buf, tmpl[body_start..body_end], item);
                                 }
                             },
                             else => {},
@@ -112,34 +129,48 @@ pub const Engine = struct {
                     }
                 } else if (std.mem.startsWith(u8, tag_content, "#if ")) {
                     const var_name = std.mem.trim(u8, tag_content[4..], " \t");
-                    const block = try findBlockEnd(template, after_tag, "if");
-                    pos = block.after;
+                    const block = try findBlockEnd(tmpl, after_tag, "if");
+                    const close_sa = isStandalone(tmpl, block.body_end, block.body_end, block.after, buf);
+                    pos = close_sa.skip_after;
 
                     const truthy = isTruthy(context.get(var_name));
 
+                    // Determine body boundaries with standalone trimming
+                    const body_start = if (standalone.is) skipNewline(tmpl, after_tag) else after_tag;
+
                     // Check for {{else}}
-                    if (findElse(template, after_tag, block.body_end)) |else_pos| {
+                    if (findElse(tmpl, after_tag, block.body_end)) |else_pos| {
+                        // Find the end of the {{else}} tag
+                        const else_tag_end = indexOfFrom(tmpl, else_pos + 2, "}}").? + 2;
+                        const else_sa = isStandalone(tmpl, else_pos, else_pos, else_tag_end, buf);
                         if (truthy) {
-                            try self.renderInto(buf, template[after_tag..else_pos], context);
+                            const if_body_end = if (else_sa.is) trimTrailingBlankPartial(tmpl, body_start, else_pos) else else_pos;
+                            try self.renderInto(buf, tmpl[body_start..if_body_end], context);
                         } else {
-                            try self.renderInto(buf, template[else_pos + 8 .. block.body_end], context);
+                            const else_body_start = if (else_sa.is) skipNewline(tmpl, else_tag_end) else else_tag_end;
+                            const else_body_end = if (close_sa.is) trimTrailingBlankPartial(tmpl, else_body_start, block.body_end) else block.body_end;
+                            try self.renderInto(buf, tmpl[else_body_start..else_body_end], context);
                         }
                     } else {
                         if (truthy) {
-                            try self.renderInto(buf, template[after_tag..block.body_end], context);
+                            const if_body_end = if (close_sa.is) trimTrailingBlankPartial(tmpl, body_start, block.body_end) else block.body_end;
+                            try self.renderInto(buf, tmpl[body_start..if_body_end], context);
                         }
                     }
                 } else if (std.mem.startsWith(u8, tag_content, "#unless ")) {
                     const var_name = std.mem.trim(u8, tag_content[8..], " \t");
-                    const block = try findBlockEnd(template, after_tag, "unless");
-                    pos = block.after;
+                    const block = try findBlockEnd(tmpl, after_tag, "unless");
+                    const close_sa = isStandalone(tmpl, block.body_end, block.body_end, block.after, buf);
+                    pos = close_sa.skip_after;
 
                     if (!isTruthy(context.get(var_name))) {
-                        try self.renderInto(buf, template[after_tag..block.body_end], context);
+                        const body_start = if (standalone.is) skipNewline(tmpl, after_tag) else after_tag;
+                        const body_end = if (close_sa.is) trimTrailingBlankPartial(tmpl, body_start, block.body_end) else block.body_end;
+                        try self.renderInto(buf, tmpl[body_start..body_end], context);
                     }
                 } else if (tag_content.len > 0 and tag_content[0] == '/') {
                     // Closing tag encountered unexpectedly, skip
-                    pos = after_tag;
+                    pos = standalone.skip_after;
                 } else {
                     // Variable or helper function: {{var}} or {{helper var}}
                     const resolved = self.resolveExpression(tag_content, context);
@@ -148,7 +179,7 @@ pub const Engine = struct {
                 }
             } else {
                 // No more tags
-                try buf.appendSlice(template[pos..]);
+                try buf.appendSlice(tmpl[pos..]);
                 break;
             }
         }
@@ -234,6 +265,71 @@ pub const Engine = struct {
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────
+
+const StandaloneInfo = struct {
+    is: bool,
+    trim_start: usize, // where to stop outputting text before the tag
+    skip_after: usize, // where to resume after the tag
+};
+
+/// Check if a tag at [tag_start..after_tag) is standalone on its line.
+/// `prev_pos` is the current rendering position (start of unprocessed text).
+/// `buf` is the output buffer, used to verify nothing was rendered on the current line.
+fn isStandalone(tmpl: []const u8, prev_pos: usize, tag_start: usize, after_tag: usize, buf: *const std.array_list.Managed(u8)) StandaloneInfo {
+    const not_standalone = StandaloneInfo{ .is = false, .trim_start = tag_start, .skip_after = after_tag };
+
+    // Find the start of the current line in the template
+    const line_start = if (tag_start > 0)
+        (if (std.mem.lastIndexOfScalar(u8, tmpl[0..tag_start], '\n')) |nl| nl + 1 else 0)
+    else
+        0;
+
+    // Check that everything from line_start (or prev_pos) to tag_start is whitespace
+    const check_from = if (line_start >= prev_pos) line_start else prev_pos;
+    const before = tmpl[check_from..tag_start];
+    for (before) |c| {
+        if (c != ' ' and c != '\t') return not_standalone;
+    }
+
+    // If line_start < prev_pos, there was already-processed content on this line.
+    // Check the output buffer: everything since the last newline must be whitespace.
+    if (line_start < prev_pos) {
+        const out = buf.items;
+        const out_line_start = if (std.mem.lastIndexOfScalar(u8, out, '\n')) |nl| nl + 1 else 0;
+        const out_on_line = out[out_line_start..];
+        for (out_on_line) |c| {
+            if (c != ' ' and c != '\t') return not_standalone;
+        }
+    }
+
+    // Check that after the tag, the next non-whitespace-on-this-line is a newline or EOF
+    var a = after_tag;
+    while (a < tmpl.len and (tmpl[a] == ' ' or tmpl[a] == '\t')) : (a += 1) {}
+    if (a < tmpl.len and tmpl[a] != '\n') return not_standalone;
+
+    const trim_start = if (line_start >= prev_pos) line_start else prev_pos;
+    const skip = if (a < tmpl.len) a + 1 else a; // skip past the newline
+
+    return .{ .is = true, .trim_start = trim_start, .skip_after = skip };
+}
+
+/// Skip a single newline character at the given position, if present.
+fn skipNewline(tmpl: []const u8, pos: usize) usize {
+    if (pos < tmpl.len and tmpl[pos] == '\n') return pos + 1;
+    return pos;
+}
+
+/// Trim a trailing whitespace-only partial line before `end`.
+/// Returns a position <= end that excludes trailing " \t" back to the previous newline.
+fn trimTrailingBlankPartial(tmpl: []const u8, start: usize, end: usize) usize {
+    if (end <= start) return end;
+    // Walk backwards from end-1 over spaces/tabs
+    var p = end;
+    while (p > start and (tmpl[p - 1] == ' ' or tmpl[p - 1] == '\t')) : (p -= 1) {}
+    // If we hit a newline or the start, the trailing part was blank
+    if (p == start or tmpl[p - 1] == '\n') return p;
+    return end; // not a blank trailing line
+}
 
 fn isTruthy(val: ?Value) bool {
     const v = val orelse return false;
