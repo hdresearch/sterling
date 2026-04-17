@@ -376,6 +376,9 @@ pub const SDKGenerator = struct {
             // Is it an enum?
             const is_enum = schema.enum_values.items.len > 0;
             try m.putBool("is_enum", is_enum);
+            // Is it a union (oneOf)?
+            const is_union = schema.one_of_variants.items.len > 0;
+            try m.putBool("is_union", is_union);
             try m.putString("type_name", schema.type_name orelse "object");
             try m.putString("description", self.sanitiseOneLine(schema.description orelse ""));
 
@@ -396,6 +399,60 @@ pub const SDKGenerator = struct {
                     enum_ctxs[ei] = ec;
                 }
                 try m.putList("enum_values", @ptrCast(enum_ctxs));
+            }
+
+            // oneOf variants (for union types)
+            if (is_union) {
+                const variant_count = schema.one_of_variants.items.len;
+                var variant_ctxs = try self.allocator.alloc(*template.Context, variant_count);
+                for (schema.one_of_variants.items, 0..) |variant, vi| {
+                    const vc = try self.allocator.create(template.Context);
+                    vc.* = template.Context.init(self.allocator);
+                    vc.parent = m;
+
+                    // Derive variant name from first required field (or first property)
+                    const variant_key = if (variant.required_fields.items.len > 0)
+                        variant.required_fields.items[0]
+                    else if (variant.properties.items.len > 0)
+                        variant.properties.items[0].name
+                    else
+                        "Unknown";
+
+                    try vc.putString("variant_key", variant_key);
+                    var vk_pascal_buf: [256]u8 = undefined;
+                    try vc.putString("variant_pascal", try self.allocator.dupe(u8, toPascalCaseStatic(variant_key, &vk_pascal_buf)));
+                    try vc.putBool("is_last", vi == variant_count - 1);
+
+                    // Build property contexts for this variant
+                    var vprop_ctxs = try self.allocator.alloc(*template.Context, variant.properties.items.len);
+                    for (variant.properties.items, 0..) |vprop, vpi| {
+                        const vpc = try self.allocator.create(template.Context);
+                        vpc.* = template.Context.init(self.allocator);
+                        vpc.parent = vc;
+                        try vpc.putString("name", vprop.name);
+                        var vp_pascal_buf: [256]u8 = undefined;
+                        try vpc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(vprop.name, &vp_pascal_buf)));
+                        try vpc.putBool("required", vprop.required);
+                        try vpc.putString("description", self.sanitiseOneLine(vprop.description orelse ""));
+                        try vpc.putString("ts_type", self.resolveTypeTS(vprop));
+                        try vpc.putString("rust_type", self.resolveTypeRust(vprop));
+                        try vpc.putString("py_type", self.resolveTypePython(vprop));
+                        try vpc.putString("go_type", self.resolveTypeGo(vprop));
+                        // Rust-safe field name (avoid keyword 'ref')
+                        if (std.mem.eql(u8, vprop.name, "ref")) {
+                            try vpc.putString("rust_name", "ref_field");
+                            try vpc.putBool("is_renamed", true);
+                        } else {
+                            try vpc.putString("rust_name", vprop.name);
+                            try vpc.putBool("is_renamed", false);
+                        }
+                        vprop_ctxs[vpi] = vpc;
+                    }
+                    try vc.putList("properties", @ptrCast(vprop_ctxs));
+
+                    variant_ctxs[vi] = vc;
+                }
+                try m.putList("variants", @ptrCast(variant_ctxs));
             }
 
             // Properties (for struct types)

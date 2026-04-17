@@ -1,0 +1,286 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Vers Orchestrator API",
+    "version": "0.1.0",
+    "description": "VM orchestration control plane"
+  },
+  "servers": [
+    { "url": "https://api.vers.sh" }
+  ],
+  "paths": {
+    "/v1/vms": {
+      "get": {
+        "operationId": "listVms",
+        "summary": "List all VMs",
+        "responses": {
+          "200": {
+            "description": "List of VMs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createVm",
+        "summary": "Create a new VM",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VmCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "VM created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vm"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vms/{vm_id}": {
+      "get": {
+        "operationId": "getVm",
+        "summary": "Get a VM by ID",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vm"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteVm",
+        "summary": "Delete a VM",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "VM deleted"
+          }
+        }
+      }
+    },
+    "/v1/vms/{vm_id}/commit": {
+      "post": {
+        "operationId": "commitVm",
+        "summary": "Commit VM state",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VmCommitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Commit created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vms/{vm_id}/restore": {
+      "post": {
+        "operationId": "restoreVm",
+        "summary": "Restore VM from a commit",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FromCommitVmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM restored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vm"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Vm": {
+        "type": "object",
+        "description": "A virtual machine instance",
+        "required": ["id", "status"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique VM identifier"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current VM status"
+          },
+          "name": {
+            "type": "string",
+            "description": "VM name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        }
+      },
+      "VmListResponse": {
+        "type": "object",
+        "required": ["vms"],
+        "properties": {
+          "vms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Vm"
+            },
+            "description": "List of VMs"
+          }
+        }
+      },
+      "VmCreateRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name for the new VM"
+          },
+          "image": {
+            "type": "string",
+            "description": "Base image to use"
+          }
+        }
+      },
+      "VmCommitRequest": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Commit message"
+          }
+        }
+      },
+      "CommitResponse": {
+        "type": "object",
+        "required": ["commit_id"],
+        "properties": {
+          "commit_id": {
+            "type": "string",
+            "description": "The created commit ID"
+          }
+        }
+      },
+      "FromCommitVmRequest": {
+        "description": "Specify the source to restore a VM from",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["commit_id"],
+            "properties": {
+              "commit_id": {
+                "type": "string",
+                "description": "The commit ID to restore from"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["tag_name"],
+            "properties": {
+              "tag_name": {
+                "type": "string",
+                "description": "The tag name to restore from"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["ref"],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "description": "A repository reference in repo_name:tag_name format"
+              }
+            }
+          }
+        ]
+      },
+      "VmStatus": {
+        "type": "string",
+        "enum": ["running", "stopped", "suspended", "error"],
+        "description": "Possible VM statuses"
+      }
+    }
+  }
+}
