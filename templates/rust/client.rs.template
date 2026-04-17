@@ -32,7 +32,7 @@ impl Client {
     /// {{summary}}
     pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{response_type}}{{else}}reqwest::Response{{/if}}, reqwest::Error> {
 {{#if has_path_params}}
-        let url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{#if has_path_params}}path_param{{/if}}));
+        let url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
 {{else}}
         let url = format!("{}{}", self.base_url, "{{path}}");
 {{/if}}

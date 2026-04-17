@@ -49,7 +49,7 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 // {{pascal_name}} - {{summary}}
 func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}) (*http.Response, error) {
 {{#if has_path_params}}
-	path := fmt.Sprintf("{{path_interpolate_go}}", {{#if has_path_params}}vmId{{/if}})
+	path := fmt.Sprintf("{{path_interpolate_go}}", {{go_format_args}})
 	return c.doRequest("{{method}}", path{{#if has_body}}, body{{else}}, nil{{/if}})
 {{else}}
 	return c.doRequest("{{method}}", "{{path}}"{{#if has_body}}, body{{else}}, nil{{/if}})

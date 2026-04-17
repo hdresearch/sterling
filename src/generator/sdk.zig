@@ -109,7 +109,7 @@ pub const SDKGenerator = struct {
                         c.parent = parent;
 
                         try c.putString("operationId", op_id);
-                        try c.putString("summary", op.summary orelse "");
+                        try c.putString("summary", self.sanitiseOneLine(op.summary orelse ""));
                         try c.putString("path", path_str);
 
                         const method_upper = comptime blk: {
@@ -140,6 +140,8 @@ pub const SDKGenerator = struct {
                             try c.putString("path_interpolate_py", param_names.py_interpolate);
                             try c.putString("path_interpolate_go", param_names.go_interpolate);
                             try c.putString("path_interpolate_rust", param_names.rust_interpolate);
+                            try c.putString("go_format_args", param_names.go_format_args);
+                            try c.putString("rust_format_args", param_names.rust_format_args);
                         }
 
                         // Body
@@ -200,6 +202,8 @@ pub const SDKGenerator = struct {
         py_interpolate: []const u8,
         go_interpolate: []const u8,
         rust_interpolate: []const u8,
+        go_format_args: []const u8,
+        rust_format_args: []const u8,
     };
 
     fn extractPathParamNames(self: *SDKGenerator, path: []const u8) !PathParamInfo {
@@ -211,6 +215,8 @@ pub const SDKGenerator = struct {
         var py_interp = std.array_list.Managed(u8).init(self.allocator);
         var go_interp = std.array_list.Managed(u8).init(self.allocator);
         var rust_interp = std.array_list.Managed(u8).init(self.allocator);
+        var go_fmt_args = std.array_list.Managed(u8).init(self.allocator);
+        var rust_fmt_args = std.array_list.Managed(u8).init(self.allocator);
 
         // Build interpolated path and param lists
         var i: usize = 0;
@@ -254,6 +260,14 @@ pub const SDKGenerator = struct {
                 // Rust: use format!
                 try rust_interp.appendSlice("{}");
 
+                // Format arguments for Go and Rust
+                if (param_count > 0) {
+                    try go_fmt_args.appendSlice(", ");
+                    try rust_fmt_args.appendSlice(", ");
+                }
+                try go_fmt_args.appendSlice(name);
+                try rust_fmt_args.appendSlice(name);
+
                 param_count += 1;
                 i = end + 1;
             } else {
@@ -274,6 +288,8 @@ pub const SDKGenerator = struct {
             .py_interpolate = try py_interp.toOwnedSlice(),
             .go_interpolate = try go_interp.toOwnedSlice(),
             .rust_interpolate = try rust_interp.toOwnedSlice(),
+            .go_format_args = try go_fmt_args.toOwnedSlice(),
+            .rust_format_args = try rust_fmt_args.toOwnedSlice(),
         };
     }
 
@@ -339,7 +355,7 @@ pub const SDKGenerator = struct {
             const is_enum = schema.enum_values.items.len > 0;
             try m.putBool("is_enum", is_enum);
             try m.putString("type_name", schema.type_name orelse "object");
-            try m.putString("description", schema.description orelse "");
+            try m.putString("description", self.sanitiseOneLine(schema.description orelse ""));
 
             // Enum values
             if (is_enum) {
@@ -368,8 +384,10 @@ pub const SDKGenerator = struct {
                     pc.* = template.Context.init(self.allocator);
                     pc.parent = m;
                     try pc.putString("name", prop.name);
+                    var prop_pascal_buf: [256]u8 = undefined;
+                    try pc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(prop.name, &prop_pascal_buf)));
                     try pc.putBool("required", prop.required);
-                    try pc.putString("description", prop.description orelse "");
+                    try pc.putString("description", self.sanitiseOneLine(prop.description orelse ""));
 
                     // Resolve type for each language
                     try pc.putString("ts_type", self.resolveTypeTS(prop));
@@ -632,6 +650,27 @@ pub const SDKGenerator = struct {
         const file = try std.fs.cwd().createFile(out_path, .{});
         defer file.close();
         try file.writeAll(final_content);
+    }
+
+    // ── String sanitisation ────────────────────────────────────────────
+
+    /// Replace newlines and double-quotes in a string so it's safe for
+    /// single-line doc comments (Rust `///`, Go `//`, Python `"""`).
+    fn sanitiseOneLine(self: *SDKGenerator, input: []const u8) []const u8 {
+        const has_nl = std.mem.indexOfScalar(u8, input, '\n') != null;
+        const has_dq = std.mem.indexOfScalar(u8, input, '"') != null;
+        if (!has_nl and !has_dq) return input;
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        for (input) |c| {
+            if (c == '\n' or c == '\r') {
+                buf.append(' ') catch return input;
+            } else if (c == '"') {
+                buf.append('\'') catch return input;
+            } else {
+                buf.append(c) catch return input;
+            }
+        }
+        return buf.toOwnedSlice() catch input;
     }
 
     // ── Case conversion ─────────────────────────────────────────────────

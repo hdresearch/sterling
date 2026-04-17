@@ -9,7 +9,7 @@ type {{name}} string
 
 const (
 {{#each enum_values}}
-	{{pascal_value}} {{name}} = "{{value}}"
+	{{name}}{{pascal_value}} {{name}} = "{{value}}"
 {{/each}}
 )
 

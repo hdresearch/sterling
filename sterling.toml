@@ -8,18 +8,22 @@ description = "Vers API - VM orchestration platform"
 
 [targets.typescript]
 language = "typescript"
+repository = "https://github.com/hdresearch/ts-sdk"
 output_dir = "./generated/typescript"
 
 [targets.rust]
 language = "rust"
+repository = "https://github.com/hdresearch/rust-sdk"
 output_dir = "./generated/rust"
 
 [targets.python]
 language = "python"
+repository = "https://github.com/hdresearch/python-sdk"
 output_dir = "./generated/python"
 
 [targets.go]
 language = "go"
+repository = "https://github.com/hdresearch/go-sdk"
 output_dir = "./generated/go"
 
 [llm]
