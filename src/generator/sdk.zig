@@ -58,7 +58,16 @@ pub const SDKGenerator = struct {
     }
 
     fn derivePackageName(self: *SDKGenerator, lang: []const u8) []const u8 {
-        _ = lang;
+        if (std.mem.eql(u8, lang, "go")) {
+            // Go modules use the GitHub repository path
+            for (self.cfg.targets) |t| {
+                if (t.language == .go) {
+                    if (t.repository.len > 0) {
+                        return std.fmt.allocPrint(self.allocator, "github.com/{s}", .{t.repository}) catch self.cfg.project.name;
+                    }
+                }
+            }
+        }
         return self.cfg.project.name;
     }
 
@@ -77,6 +86,17 @@ pub const SDKGenerator = struct {
         try ctx.putString("base_url", self.deriveBaseUrl());
         try ctx.putString("package_name", self.derivePackageName(""));
         try ctx.putString("module_name", self.derivePackageName("go"));
+        // Go package names can't have hyphens — replace with underscores
+        const pkg = self.derivePackageName("");
+        var go_pkg_buf: [256]u8 = undefined;
+        var go_pkg_len: usize = 0;
+        for (pkg) |c| {
+            if (go_pkg_len < 256) {
+                go_pkg_buf[go_pkg_len] = if (c == '-') '_' else c;
+                go_pkg_len += 1;
+            }
+        }
+        try ctx.putString("go_package_name", try self.allocator.dupe(u8, go_pkg_buf[0..go_pkg_len]));
         try ctx.putString("go_version", "1.21");
         return ctx;
     }
