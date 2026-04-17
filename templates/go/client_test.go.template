@@ -5,6 +5,7 @@ package {{go_package_name}}
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,11 +25,10 @@ func setupTestServer(t *testing.T) (*httptest.Server, *captured) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cap.Method = r.Method
 		cap.Path = r.URL.RequestURI()
-		buf := new(strings.Builder)
 		if r.Body != nil {
-			_, _ = buf.ReadFrom(r.Body)
+			bodyBytes, _ := io.ReadAll(r.Body)
+			cap.Body = string(bodyBytes)
 		}
-		cap.Body = buf.String()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -75,8 +75,8 @@ func TestErrorHandling_400(t *testing.T) {
 	if ok := isAPIError(err, &apiErr); !ok {
 		t.Fatalf("expected APIError, got %T", err)
 	}
-	if apiErr.StatusCode != 400 {
-		t.Errorf("status: got %d, want 400", apiErr.StatusCode)
+	if apiErr.Status != 400 {
+		t.Errorf("status: got %d, want 400", apiErr.Status)
 	}
 }
 

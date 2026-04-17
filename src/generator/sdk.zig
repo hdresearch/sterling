@@ -244,8 +244,8 @@ pub const SDKGenerator = struct {
                         // Test call arguments for each language
                         try c.putString("test_args_ts", try self.buildTestArgsTS(path_str, has_body));
                         try c.putString("test_args_py", try self.buildTestArgsPy(path_str, has_body));
-                        try c.putString("test_args_go", try self.buildTestArgsGo(path_str, has_body));
-                        try c.putString("test_args_rust", try self.buildTestArgsRust(path_str, has_body));
+                        try c.putString("test_args_go", try self.buildTestArgsGo(path_str, has_body, op));
+                        try c.putString("test_args_rust", try self.buildTestArgsRust(path_str, has_body, op));
 
                         // Mark first operation for error test generation
                         try c.putBool("is_first", idx == 0);
@@ -441,30 +441,50 @@ pub const SDKGenerator = struct {
         return try buf.toOwnedSlice();
     }
 
-    fn buildTestArgsGo(self: *SDKGenerator, path: []const u8, has_body: bool) ![]const u8 {
+    fn buildTestArgsGo(self: *SDKGenerator, path: []const u8, has_body: bool, op: parser.Operation) ![]const u8 {
         var buf = std.array_list.Managed(u8).init(self.allocator);
+        var has_prev = false;
         const n = self.countPathParams(path);
         for (0..n) |i| {
             if (i > 0) try buf.appendSlice(", ");
             try buf.appendSlice("\"test-id\"");
+            has_prev = true;
         }
         if (has_body) {
-            if (n > 0) try buf.appendSlice(", ");
+            if (has_prev) try buf.appendSlice(", ");
             try buf.appendSlice("nil");
+            has_prev = true;
+        }
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (has_prev) try buf.appendSlice(", ");
+                try buf.appendSlice("nil");
+                has_prev = true;
+            }
         }
         return try buf.toOwnedSlice();
     }
 
-    fn buildTestArgsRust(self: *SDKGenerator, path: []const u8, has_body: bool) ![]const u8 {
+    fn buildTestArgsRust(self: *SDKGenerator, path: []const u8, has_body: bool, op: parser.Operation) ![]const u8 {
         var buf = std.array_list.Managed(u8).init(self.allocator);
+        var has_prev = false;
         const n = self.countPathParams(path);
         for (0..n) |i| {
             if (i > 0) try buf.appendSlice(", ");
             try buf.appendSlice("\"test-id\"");
+            has_prev = true;
         }
         if (has_body) {
-            if (n > 0) try buf.appendSlice(", ");
+            if (has_prev) try buf.appendSlice(", ");
             try buf.appendSlice("&serde_json::json!({})");
+            has_prev = true;
+        }
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (has_prev) try buf.appendSlice(", ");
+                try buf.appendSlice("None");
+                has_prev = true;
+            }
         }
         return try buf.toOwnedSlice();
     }
@@ -1006,18 +1026,15 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/typescript/tsconfig.json.template", d, "tsconfig.json", ctx);
         try self.renderTo("templates/typescript/package.json.template", d, "package.json", ctx);
         try self.renderTo("templates/typescript/README.md.template", d, "README.md", ctx);
-<<<<<<< HEAD
         try self.renderTo("templates/typescript/lib/ssh/client.ts.template", d, "src/lib/ssh/client.ts", ctx);
         try self.renderTo("templates/typescript/lib/ssh/errors.ts.template", d, "src/lib/ssh/errors.ts", ctx);
         try self.renderTo("templates/typescript/lib/ssh/types.ts.template", d, "src/lib/ssh/types.ts", ctx);
         try self.renderTo("templates/typescript/lib/ssh/index.ts.template", d, "src/lib/ssh/index.ts", ctx);
         try self.renderTo("templates/typescript/lib/vm-ssh.ts.template", d, "src/lib/vm-ssh.ts", ctx);
-=======
         const tests_dir = try std.fmt.allocPrint(self.allocator, "{s}/tests", .{d});
         defer self.allocator.free(tests_dir);
         self.makeDirRecursive(tests_dir) catch {};
         try self.renderTo("templates/typescript/tests/client.test.ts.template", d, "tests/client.test.ts", ctx);
->>>>>>> origin/agent/tests
         std.debug.print("Generated TypeScript SDK at {s}\n", .{d});
     }
 
