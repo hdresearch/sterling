@@ -12,6 +12,10 @@ on:
   schedule:
     - cron: '0 6 * * *'
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   generate-sdks:
     runs-on: ubuntu-latest
@@ -113,20 +117,21 @@ jobs:
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/go-sdk.git
         git push -f origin HEAD:main
 
-    - name: Publish TypeScript SDK to npm
+    - name: Setup Node.js for npm publish
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        registry-url: 'https://registry.npmjs.org'
+
+    - name: Publish TypeScript SDK to npm (trusted publishing)
       if: success()
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       run: |
-        if [ -z "$NODE_AUTH_TOKEN" ]; then
-          echo "NPM_TOKEN not set, skipping npm publish"
-          exit 0
-        fi
         cd generated/typescript
         npm install typescript --save-dev
         npx tsc
-        echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-        npm publish --access public || echo "Publish failed (version may already exist)"
+        npm publish --access public --provenance || echo "Publish failed (version may already exist)"
 
     - name: Publish Python SDK to PyPI
       if: success()
