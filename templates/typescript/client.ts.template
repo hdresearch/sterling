@@ -47,6 +47,20 @@ function retryDelay(retryCount: number): number {
   return base + jitter;
 }
 
+function parseRetryAfter(headerValue: string | null): number | null {
+  if (headerValue == null) return null;
+  const seconds = Number(headerValue);
+  if (!Number.isNaN(seconds)) {
+    return Math.min(Math.max(seconds * 1000, 0), 60000);
+  }
+  const date = new Date(headerValue);
+  if (!Number.isNaN(date.getTime())) {
+    const delayMs = date.getTime() - Date.now();
+    return Math.min(Math.max(delayMs, 0), 60000);
+  }
+  return null;
+}
+
 export class {{class_name}}Client {
   private baseUrl: string;
   private apiKey?: string;
@@ -114,11 +128,13 @@ export class {{class_name}}Client {
 
     this.log('debug', `request: ${method} ${path}`);
     let lastError: unknown;
+    let lastRetryAfterUsed = false;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      if (attempt > 0) {
+      if (attempt > 0 && !lastRetryAfterUsed) {
         this.log('info', `retry attempt ${attempt}/${this.maxRetries} for ${method} ${path}`);
         await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt - 1)));
       }
+      lastRetryAfterUsed = false;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -132,6 +148,12 @@ export class {{class_name}}Client {
         });
 
         if (isRetryableStatus(response.status) && attempt < this.maxRetries) {
+          const retryAfterDelay = parseRetryAfter(response.headers.get('retry-after'));
+          if (retryAfterDelay != null) {
+            lastRetryAfterUsed = true;
+            this.log('info', `retry attempt ${attempt + 1}/${this.maxRetries} for ${method} ${path} (retry-after: ${retryAfterDelay}ms)`);
+            await new Promise((resolve) => setTimeout(resolve, retryAfterDelay));
+          }
           lastError = new Error(`HTTP ${response.status}`);
           continue;
         }

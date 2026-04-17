@@ -2,9 +2,12 @@
 # {{spec_title}} v{{spec_version}}
 
 import asyncio
+import calendar
+import email.utils
 import logging
 import os
 import random
+import time as _time
 import uuid
 from typing import Any, Optional
 
@@ -49,6 +52,22 @@ def _retry_delay(attempt: int) -> float:
     base = 0.5 * (2 ** attempt)
     jitter = random.random() * base * 0.25
     return base + jitter
+
+
+def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
+    if header_value is None:
+        return None
+    try:
+        delay = float(header_value)
+        return min(max(delay, 0.0), 60.0)
+    except (ValueError, OverflowError):
+        pass
+    parsed = email.utils.parsedate(header_value)
+    if parsed is not None:
+        retry_time = calendar.timegm(parsed)
+        delay = retry_time - _time.time()
+        return min(max(delay, 0.0), 60.0)
+    return None
 
 
 class {{class_name}}Client:
@@ -102,14 +121,21 @@ class {{class_name}}Client:
             headers["X-Idempotency-Key"] = idempotency_key
             kwargs["headers"] = headers
         last_exc: Optional[Exception] = None
+        retry_after_used = False
         for attempt in range(self.max_retries + 1):
-            if attempt > 0:
+            if attempt > 0 and not retry_after_used:
                 logger.info("retry attempt %d/%d for %s %s", attempt, self.max_retries, method, path)
                 await asyncio.sleep(_retry_delay(attempt - 1))
+            retry_after_used = False
             try:
                 response = await self._client.request(method, path, **kwargs)
                 logger.debug("response: %d for %s %s", response.status_code, method, path)
                 if _is_retryable_status(response.status_code) and attempt < self.max_retries:
+                    ra_delay = _parse_retry_after(response.headers.get("retry-after"))
+                    if ra_delay is not None:
+                        retry_after_used = True
+                        logger.info("retry attempt %d/%d for %s %s (retry-after: %.1fs)", attempt + 1, self.max_retries, method, path, ra_delay)
+                        await asyncio.sleep(ra_delay)
                     last_exc = Exception(f"HTTP {response.status_code}")
                     continue
                 self._check_response(response)

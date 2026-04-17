@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"runtime"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -74,6 +75,33 @@ func retryDelay(attempt int) time.Duration {
 	return time.Duration(baseMs+jitterMs) * time.Millisecond
 }
 
+func parseRetryAfter(headerValue string) (time.Duration, bool) {
+	if headerValue == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(headerValue); err == nil {
+		d := time.Duration(seconds) * time.Second
+		if d < 0 {
+			d = 0
+		}
+		if d > 60*time.Second {
+			d = 60 * time.Second
+		}
+		return d, true
+	}
+	if t, err := time.Parse(time.RFC1123, headerValue); err == nil {
+		d := time.Until(t)
+		if d < 0 {
+			d = 0
+		}
+		if d > 60*time.Second {
+			d = 60 * time.Second
+		}
+		return d, true
+	}
+	return 0, false
+}
+
 func NewClient(baseURL string, apiKey string) *Client {
 	if baseURL == "" {
 		if envURL := os.Getenv("VERS_BASE_URL"); envURL != "" {
@@ -124,11 +152,13 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 		idempotencyKey = generateIdempotencyKey()
 	}
 	var lastErr error
+	retryAfterUsed := false
 	for attempt := 0; attempt <= c.MaxRetries; attempt++ {
-		if attempt > 0 {
+		if attempt > 0 && !retryAfterUsed {
 			c.logf(LogInfo, "retry attempt %d/%d for %s %s", attempt, c.MaxRetries, method, path)
 			time.Sleep(retryDelay(attempt - 1))
 		}
+		retryAfterUsed = false
 
 		var reqBody io.Reader
 		if body != nil {
@@ -166,6 +196,11 @@ func (c *Client) doRequest(method, path string, body interface{}) (*http.Respons
 		}
 		c.logf(LogDebug, "response: %d for %s %s", resp.StatusCode, method, path)
 		if isRetryableStatus(resp.StatusCode) && attempt < c.MaxRetries {
+			if d, ok := parseRetryAfter(resp.Header.Get("Retry-After")); ok {
+				retryAfterUsed = true
+				c.logf(LogInfo, "retry attempt %d/%d for %s %s (retry-after: %v)", attempt+1, c.MaxRetries, method, path, d)
+				time.Sleep(d)
+			}
 			resp.Body.Close()
 			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
 			continue
