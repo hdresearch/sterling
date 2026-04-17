@@ -25,7 +25,7 @@ function parseLogLevel(value: string | undefined): LogLevel | undefined {
 export interface {{class_name}}ClientOptions {
   baseUrl?: string;
   apiKey?: string;
-  headers?: Record<string, string>;
+  headers?: Record<string, string | null>;
   /** Maximum number of retries on 5xx/network errors. Default: 2 */
   maxRetries?: number;
   /** Request timeout in milliseconds. Default: 30000 */
@@ -50,7 +50,7 @@ function retryDelay(retryCount: number): number {
 export class {{class_name}}Client {
   private baseUrl: string;
   private apiKey?: string;
-  private headers: Record<string, string>;
+  private headers: Record<string, string | null>;
   private maxRetries: number;
   private timeout: number;
   private logLevel: LogLevel;
@@ -86,6 +86,24 @@ export class {{class_name}}Client {
     }
   }
 
+  private mergeHeaders(...sources: (Record<string, string | null | undefined> | undefined)[]): Record<string, string> {
+    const merged: Record<string, string> = {};
+    for (const source of sources) {
+      if (!source) continue;
+      for (const [key, value] of Object.entries(source)) {
+        if (value === null || value === undefined) {
+          // Remove header (case-insensitive)
+          for (const k of Object.keys(merged)) {
+            if (k.toLowerCase() === key.toLowerCase()) delete merged[k];
+          }
+        } else {
+          merged[key] = value;
+        }
+      }
+    }
+    return merged;
+  }
+
   private get userAgent(): string {
     const rt = typeof globalThis !== "undefined" && "Deno" in globalThis
       ? `deno/${(globalThis as any).Deno?.version?.deno ?? "unknown"}`
@@ -97,15 +115,15 @@ export class {{class_name}}Client {
     return `{{package_name}}/{{project_version}} ${rt} ${os}`;
   }
 
-  private async request(method: string, path: string, body?: unknown): Promise<Response> {
-    const headers: Record<string, string> = {
+  private async request(method: string, path: string, body?: unknown, options?: { headers?: Record<string, string | null> }): Promise<Response> {
+    const defaultHeaders: Record<string, string> = {
       "Content-Type": "application/json",
       "User-Agent": this.userAgent,
-      ...this.headers,
     };
     if (this.apiKey) {
-      headers["Authorization"] = `Bearer ${this.apiKey}`;
+      defaultHeaders["Authorization"] = `Bearer ${this.apiKey}`;
     }
+    const headers = this.mergeHeaders(defaultHeaders, this.headers, options?.headers);
 
     this.log('debug', `request: ${method} ${path}`);
     let lastError: unknown;

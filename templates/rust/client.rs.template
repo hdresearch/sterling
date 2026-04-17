@@ -2,6 +2,7 @@
 // {{spec_title}} v{{spec_version}}
 
 use reqwest::Client as HttpClient;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use crate::models::*;
 use std::time::Duration;
 
@@ -32,9 +33,23 @@ pub struct Client {
     http: HttpClient,
     base_url: String,
     api_key: Option<String>,
+    headers: HeaderMap,
     max_retries: u32,
     timeout: Duration,
     log_level: LogLevel,
+}
+
+/// Merge multiple header maps. Later sources override earlier ones (case-insensitive).
+/// A `None` value in the override map removes that header.
+fn merge_headers(base: &HeaderMap, overrides: &[(HeaderName, Option<HeaderValue>)]) -> HeaderMap {
+    let mut merged = base.clone();
+    for (name, value) in overrides {
+        match value {
+            None => { merged.remove(name); }
+            Some(v) => { merged.insert(name.clone(), v.clone()); }
+        }
+    }
+    merged
 }
 
 impl Client {
@@ -50,6 +65,7 @@ impl Client {
             http: HttpClient::new(),
             base_url: actual_base,
             api_key: env_key,
+            headers: HeaderMap::new(),
             max_retries: 2,
             timeout: Duration::from_secs(30),
             log_level: LogLevel::from_env(),
@@ -63,6 +79,11 @@ impl Client {
 
     pub fn with_api_key(mut self, key: &str) -> Self {
         self.api_key = Some(key.to_string());
+        self
+    }
+
+    pub fn with_headers(mut self, headers: HeaderMap) -> Self {
+        self.headers = headers;
         self
     }
 
@@ -123,15 +144,21 @@ impl Client {
                 }
                 tokio::time::sleep(Self::retry_delay(attempt - 1)).await;
             }
-            let mut req = self.http.{{method_lower}}(&url).timeout(self.timeout);
-            req = req.header("User-Agent", format!(
+            let mut default_headers = HeaderMap::new();
+            default_headers.insert("user-agent", HeaderValue::from_str(&format!(
                 "{{package_name}}/{{project_version}} rust {}/{}",
                 std::env::consts::OS,
                 std::env::consts::ARCH,
-            ));
+            )).unwrap());
             if let Some(ref token) = self.auth_header() {
-                req = req.header("Authorization", token);
+                default_headers.insert("authorization", HeaderValue::from_str(token).unwrap());
             }
+            // Merge default headers with client-level headers (client headers override defaults)
+            let client_overrides: Vec<(HeaderName, Option<HeaderValue>)> = self.headers.iter()
+                .map(|(k, v)| (k.clone(), Some(v.clone())))
+                .collect();
+            let merged = merge_headers(&default_headers, &client_overrides);
+            let mut req = self.http.{{method_lower}}(&url).timeout(self.timeout).headers(merged);
 {{#if has_body}}
             req = req.json(body);
 {{/if}}
