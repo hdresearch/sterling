@@ -195,7 +195,7 @@ class {{class_name}}Client(
     /**
      * {{summary}}
      */
-    suspend fun {{camel_name}}({{#if has_path_params}}{{path_params_kotlin}}, {{/if}}{{#if has_body}}body: Map<String, Any?>? = null, {{/if}}{{#if has_query_params}}params: {{params_type_name}}? = null, {{/if}}options: RequestOptions? = null): HttpResponse<String> {
+    suspend fun {{camel_name}}({{#if has_path_params}}{{path_params_kotlin}}, {{/if}}{{#if has_body}}body: Map<String, Any?>? = null, {{/if}}{{#if has_query_params}}params: {{params_type_name}}? = null, {{/if}}options: RequestOptions? = null): Map<String, Any?> {
 {{#if has_path_params}}
         val path = String.format("{{path_interpolate_go}}", {{go_format_args}})
 {{else}}
@@ -216,7 +216,9 @@ class {{class_name}}Client(
 {{else}}
         val bodyStr: String? = null
 {{/if}}
-        return request("{{method}}", {{#if has_query_params}}fullPath{{else}}path{{/if}}, bodyStr, options)
+        val response = request("{{method}}", {{#if has_query_params}}fullPath{{else}}path{{/if}}, bodyStr, options)
+        @Suppress("UNCHECKED_CAST")
+        return json.decodeFromString<Map<String, kotlinx.serialization.json.JsonElement>>(response.body()) as Map<String, Any?>
     }
 
 {{/each}}

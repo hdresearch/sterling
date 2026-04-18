@@ -199,6 +199,8 @@ pub const SDKGenerator = struct {
 
                         // Response type from success response $ref
                         var response_type: []const u8 = "";
+                        var is_array_response = false;
+                        var array_item_type: []const u8 = "";
                         var resp_iter = op.responses.iterator();
                         while (resp_iter.next()) |re| {
                             // Look for 200/201 response with schema ref
@@ -207,13 +209,27 @@ pub const SDKGenerator = struct {
                                     response_type = ref;
                                     break;
                                 }
+                                // Handle array responses: type: array, items: { $ref: ... }
+                                if (re.value_ptr.is_array) {
+                                    is_array_response = true;
+                                    if (re.value_ptr.array_item_ref) |item_ref| {
+                                        array_item_type = item_ref;
+                                    }
+                                    break;
+                                }
                             }
                         }
                         if (response_type.len > 0) {
                             try c.putString("response_type", response_type);
                             try c.putBool("has_typed_response", true);
+                            try c.putBool("is_array_response", false);
+                        } else if (is_array_response and array_item_type.len > 0) {
+                            try c.putString("response_type", array_item_type);
+                            try c.putBool("has_typed_response", true);
+                            try c.putBool("is_array_response", true);
                         } else {
                             try c.putBool("has_typed_response", false);
+                            try c.putBool("is_array_response", false);
                         }
 
                         // Query params

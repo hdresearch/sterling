@@ -86,6 +86,10 @@ pub const RequestBody = struct {
 pub const Response = struct {
     description: []const u8,
     schema_ref: ?[]const u8 = null,
+    /// True when the response schema is type: array with items.$ref
+    is_array: bool = false,
+    /// For array responses, the $ref name of the items
+    array_item_ref: ?[]const u8 = null,
 
     pub fn deinit(_: *Response, _: std.mem.Allocator) void {}
 };
@@ -438,6 +442,7 @@ fn parseResponse(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !Respons
         if (v == .string) resp.description = try allocator.dupe(u8, v.string);
     }
     // Extract schema $ref from content.application/json.schema.$ref
+    // Also handles array responses: { type: "array", items: { $ref: ... } }
     if (obj.get("content")) |content| {
         if (content == .object) {
             if (content.object.get("application/json")) |json_ct| {
@@ -447,6 +452,21 @@ fn parseResponse(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !Respons
                             if (schema.object.get("$ref")) |ref| {
                                 if (ref == .string) {
                                     resp.schema_ref = try allocator.dupe(u8, extractRefName(ref.string));
+                                }
+                            }
+                            // Handle array responses: { type: "array", items: { $ref: "..." } }
+                            if (schema.object.get("type")) |type_val| {
+                                if (type_val == .string and std.mem.eql(u8, type_val.string, "array")) {
+                                    resp.is_array = true;
+                                    if (schema.object.get("items")) |items| {
+                                        if (items == .object) {
+                                            if (items.object.get("$ref")) |items_ref| {
+                                                if (items_ref == .string) {
+                                                    resp.array_item_ref = try allocator.dupe(u8, extractRefName(items_ref.string));
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

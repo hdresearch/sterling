@@ -304,7 +304,7 @@ export class {{class_name}}Client {
   /**
    * {{summary}}
    */
-  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params?: {{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}options?: RequestOptions): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
+  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params?: {{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}options?: RequestOptions): Promise<{{#if has_typed_response}}{{#if is_array_response}}{{response_type}}[]{{else}}{{response_type}}{{/if}}{{else}}any{{/if}}> {
 {{#if has_path_params}}
     let url = `{{path_interpolate_ts}}`;
 {{else}}
@@ -318,12 +318,10 @@ export class {{class_name}}Client {
     const qs = searchParams.toString();
     if (qs) url += "?" + qs;
 {{/if}}
-{{#if has_typed_response}}
     const resp = await this.request("{{method}}", url{{#if has_body}}, body{{else}}, undefined{{/if}}, options);
-    return resp.json() as Promise<{{response_type}}>;
-{{else}}
-    return this.request("{{method}}", url{{#if has_body}}, body{{else}}, undefined{{/if}}, options);
-{{/if}}
+    const text = await resp.text();
+    if (!text) return {{#if has_typed_response}}{{#if is_array_response}}[] as unknown as {{response_type}}[]{{else}}{} as unknown as {{response_type}}{{/if}}{{else}}{}{{/if}};
+    return JSON.parse(text){{#if has_typed_response}} as {{#if is_array_response}}{{response_type}}[]{{else}}{{response_type}}{{/if}}{{/if}};
   }
 {{/each}}
 }

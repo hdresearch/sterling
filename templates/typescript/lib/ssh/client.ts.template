@@ -39,6 +39,7 @@ const DEFAULT_KEEPALIVE_MAX_COUNT = 6;
 export class SSHClient {
   private readonly connectionInfo: SSHConnectionInfo;
   private client: SSH2Client | null = null;
+  private _connected = false;
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
   private missedKeepalives = 0;
   private options: SSHOptions;
@@ -128,6 +129,7 @@ export class SSHClient {
 
       client.on('ready', () => {
         clearTimeout(timeoutId);
+        this._connected = true;
         resolve(client);
       });
 
@@ -143,6 +145,11 @@ export class SSHClient {
 
       client.on('close', () => {
         clearTimeout(timeoutId);
+        if (this.keepAliveTimer) {
+          clearInterval(this.keepAliveTimer);
+          this.keepAliveTimer = null;
+        }
+        this._connected = false;
       });
 
       client.connect({
@@ -161,16 +168,31 @@ export class SSHClient {
     this.missedKeepalives = 0;
 
     this.keepAliveTimer = setInterval(() => {
-      client.exec('true', (err) => {
-        if (err) {
-          this.missedKeepalives++;
-          if (this.missedKeepalives >= maxCount) {
-            this.close();
-          }
-        } else {
-          this.missedKeepalives = 0;
+      if (!this._connected) {
+        if (this.keepAliveTimer) {
+          clearInterval(this.keepAliveTimer);
+          this.keepAliveTimer = null;
         }
-      });
+        return;
+      }
+      try {
+        client.exec('true', (err) => {
+          if (err) {
+            this.missedKeepalives++;
+            if (this.missedKeepalives >= maxCount) {
+              this.close();
+            }
+          } else {
+            this.missedKeepalives = 0;
+          }
+        });
+      } catch {
+        // Connection already closed
+        if (this.keepAliveTimer) {
+          clearInterval(this.keepAliveTimer);
+          this.keepAliveTimer = null;
+        }
+      }
     }, interval);
   }
 
@@ -577,6 +599,8 @@ export class SSHClient {
    * Close the SSH connection
    */
   close(): void {
+    this._connected = false;
+
     if (this.keepAliveTimer) {
       clearInterval(this.keepAliveTimer);
       this.keepAliveTimer = null;
@@ -592,6 +616,6 @@ export class SSHClient {
    * Check if connection is active
    */
   get isConnected(): boolean {
-    return this.client !== null;
+    return this._connected && this.client !== null;
   }
 }

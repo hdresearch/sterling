@@ -203,7 +203,7 @@ class {{class_name}}Client:
         raise last_exc  # type: ignore[misc]
 
 {{#each operations}}
-    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}{{#if has_query_params}}, params: {{params_type_name}} | None = None{{/if}}, options: RequestOptions | None = None) -> httpx.Response:
+    async def {{snake_name}}(self{{#if has_path_params}}, {{path_params_py}}{{/if}}{{#if has_body}}, body: {{#if has_typed_body}}dict[str, Any]{{else}}dict[str, Any] | None = None{{/if}}{{/if}}{{#if has_query_params}}, params: {{params_type_name}} | None = None{{/if}}, options: RequestOptions | None = None) -> {{#if has_typed_response}}{{#if is_array_response}}list[{{response_type}}]{{else}}{{response_type}}{{/if}}{{else}}Any{{/if}}:
         """{{summary}}"""
 {{#if has_path_params}}
         path = f"{{path_interpolate_py}}"
@@ -218,7 +218,10 @@ class {{class_name}}Client:
                 query["{{name}}"] = params.{{name}}
 {{/each}}
 {{/if}}
-        return await self._request("{{method}}", path, options{{#if has_body}}, json=body{{/if}}{{#if has_query_params}}, params=query{{/if}})
+        resp = await self._request("{{method}}", path, options{{#if has_body}}, json=body{{/if}}{{#if has_query_params}}, params=query{{/if}})
+        if not resp.content:
+            return {}
+        return resp.json()
 
 {{/each}}
     async def close(self) -> None:

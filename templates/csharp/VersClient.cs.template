@@ -278,7 +278,7 @@ namespace VersSdk
 
 {{#each operations}}
         /// <summary>{{summary}}</summary>
-        public async Task<HttpResponseMessage> {{pascal_name}}Async({{#if has_path_params}}{{path_params_csharp}}, {{/if}}{{#if has_body}}object? body = null, {{/if}}{{#if has_query_params}}{{params_type_name}}? queryParams = null, {{/if}}RequestOptions? options = null, CancellationToken cancellationToken = default)
+        public async Task<JsonElement> {{pascal_name}}Async({{#if has_path_params}}{{path_params_csharp}}, {{/if}}{{#if has_body}}object? body = null, {{/if}}{{#if has_query_params}}{{params_type_name}}? queryParams = null, {{/if}}RequestOptions? options = null, CancellationToken cancellationToken = default)
         {
 {{#if has_path_params}}
             var path = $"{{path_interpolate_csharp}}";
@@ -296,7 +296,7 @@ namespace VersSdk
 {{/each}}
             }
 {{/if}}
-            return await RequestAsync(
+            var response = await RequestAsync(
                 new HttpMethod("{{method}}"),
                 path,
 {{#if has_body}}
@@ -307,6 +307,8 @@ namespace VersSdk
 {{/if}}
                 options: options,
                 cancellationToken: cancellationToken);
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            return JsonSerializer.Deserialize<JsonElement>(json);
         }
 
 {{/each}}

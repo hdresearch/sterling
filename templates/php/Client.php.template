@@ -302,10 +302,10 @@ class {{class_name}}Client
      * @param {{params_type_name}}|null $params Query parameters
 {{/if}}
      * @param RequestOptions|null $options Per-request options
-     * @return array{status: int, headers: array<string, string>, body: string, decoded: mixed}
+     * @return mixed Decoded JSON response
      * @throws ApiException
      */
-    public function {{camel_name}}({{#if has_path_params}}{{path_params_php}}, {{/if}}{{#if has_body}}?array $body = null, {{/if}}{{#if has_query_params}}?{{params_type_name}} $params = null, {{/if}}?RequestOptions $options = null): array
+    public function {{camel_name}}({{#if has_path_params}}{{path_params_php}}, {{/if}}{{#if has_body}}?array $body = null, {{/if}}{{#if has_query_params}}?{{params_type_name}} $params = null, {{/if}}?RequestOptions $options = null): mixed
     {
 {{#if has_path_params}}
         $path = sprintf('{{path_interpolate_go}}', {{php_format_args}});
@@ -322,7 +322,8 @@ class {{class_name}}Client
 {{/each}}
         }
 {{/if}}
-        return $this->request('{{method}}', $path, $options{{#if has_body}}, $body{{/if}}{{#if has_query_params}}, {{#if has_body}}$query{{else}}null, $query{{/if}}{{/if}});
+        $result = $this->request('{{method}}', $path, $options{{#if has_body}}, $body{{/if}}{{#if has_query_params}}, {{#if has_body}}$query{{else}}null, $query{{/if}}{{/if}});
+        return $result['decoded'];
     }
 
 {{/each}}

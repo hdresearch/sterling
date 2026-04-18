@@ -280,7 +280,15 @@ func (c *Client) doRequest(method, path string, body interface{}, opts ...*Reque
 
 {{#each operations}}
 // {{pascal_name}} - {{summary}}
-func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params *{{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}opts ...*RequestOptions) (*http.Response, error) {
+{{#if has_typed_response}}
+{{#if is_array_response}}
+func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params *{{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}opts ...*RequestOptions) ([]{{response_type}}, error) {
+{{else}}
+func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params *{{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}opts ...*RequestOptions) (*{{response_type}}, error) {
+{{/if}}
+{{else}}
+func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body interface{}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params *{{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}opts ...*RequestOptions) (map[string]interface{}, error) {
+{{/if}}
 {{#if has_path_params}}
 	reqPath := fmt.Sprintf("{{path_interpolate_go}}", {{go_format_args}})
 {{else}}
@@ -299,7 +307,48 @@ func (c *Client) {{pascal_name}}({{#if has_path_params}}{{path_params_go}}{{#if 
 		reqPath += "?" + qs
 	}
 {{/if}}
-	return c.doRequest("{{method}}", reqPath{{#if has_body}}, body{{else}}, nil{{/if}}, opts...)
+	resp, err := c.doRequest("{{method}}", reqPath{{#if has_body}}, body{{else}}, nil{{/if}}, opts...)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if len(bodyBytes) == 0 {
+{{#if has_typed_response}}
+{{#if is_array_response}}
+		return nil, nil
+{{else}}
+		var empty {{response_type}}
+		return &empty, nil
+{{/if}}
+{{else}}
+		return map[string]interface{}{}, nil
+{{/if}}
+	}
+{{#if has_typed_response}}
+{{#if is_array_response}}
+	var result []{{response_type}}
+{{else}}
+	var result {{response_type}}
+{{/if}}
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+{{#if is_array_response}}
+	return result, nil
+{{else}}
+	return &result, nil
+{{/if}}
+{{else}}
+	var result map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	return result, nil
+{{/if}}
 }
 
 {{/each}}

@@ -78,7 +78,7 @@ public class VersClient implements AutoCloseable {
     /**
      * {{summary}}
      */
-    public HttpResponse<String> {{camel_name}}({{#if has_path_params}}{{path_params_java}}, {{/if}}{{#if has_body}}Map<String, Object> body, {{/if}}{{#if has_query_params}}Models.{{params_type_name}} params, {{/if}}RequestOptions options) throws IOException, InterruptedException {
+    public Map<String, Object> {{camel_name}}({{#if has_path_params}}{{path_params_java}}, {{/if}}{{#if has_body}}Map<String, Object> body, {{/if}}{{#if has_query_params}}Models.{{params_type_name}} params, {{/if}}RequestOptions options) throws IOException, InterruptedException {
 {{#if has_path_params}}
         String path = String.format("{{path_interpolate_go}}", {{go_format_args}});
 {{else}}
@@ -96,7 +96,8 @@ public class VersClient implements AutoCloseable {
         }
         path = path + query.toString();
 {{/if}}
-        return doRequest("{{method}}", path, {{#if has_body}}body{{else}}null{{/if}}, options);
+        HttpResponse<String> response = doRequest("{{method}}", path, {{#if has_body}}body{{else}}null{{/if}}, options);
+        return objectMapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {});
     }
 
 {{/each}}

@@ -120,7 +120,7 @@ module VersSdk
           end
 
           check_response(response)
-          return response
+          return JSON.parse(response.body) rescue response.body
         rescue APIError
           raise
         rescue Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ETIMEDOUT,

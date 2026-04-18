@@ -16,7 +16,7 @@ export class {{resource_class}} {
   /**
    * {{summary}}
    */
-  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params?: {{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}options?: RequestOptions): Promise<{{#if has_typed_response}}{{response_type}}{{else}}Response{{/if}}> {
+  async {{camel_name}}({{#if has_path_params}}{{path_params_ts}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body: {{#if has_typed_body}}{{request_type}}{{else}}Record<string, unknown>{{/if}}{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params?: {{params_type_name}}{{/if}}{{#if has_any_params}}, {{/if}}options?: RequestOptions): Promise<{{#if has_typed_response}}{{#if is_array_response}}{{response_type}}[]{{else}}{{response_type}}{{/if}}{{else}}any{{/if}}> {
     return this._client.{{camel_name}}({{#if has_path_params}}{{path_params_ts_args}}{{#if has_body}}, {{/if}}{{/if}}{{#if has_body}}body{{/if}}{{#if has_query_params}}{{#if query_needs_comma}}, {{/if}}params{{/if}}{{#if has_any_params}}, {{/if}}options);
   }
 

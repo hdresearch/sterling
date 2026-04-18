@@ -139,7 +139,7 @@ impl Client {
 
 {{#each operations}}
     /// {{summary}}
-    pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{response_type}}{{else}}reqwest::Response{{/if}}, reqwest::Error> {
+    pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{#if is_array_response}}Vec<{{response_type}}>{{else}}{{response_type}}{{/if}}{{else}}serde_json::Value{{/if}}, reqwest::Error> {
 {{#if has_path_params}}
         let mut url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
 {{else}}
@@ -216,11 +216,11 @@ impl Client {
                         log::debug!("response: {} for {{method}} {}", resp.status().as_u16(), url);
                     }
                     if !Self::is_retryable_status(resp.status().as_u16()) || attempt == self.max_retries {
-{{#if has_typed_response}}
+                        let content_length = resp.content_length().unwrap_or(1);
+                        if content_length == 0 {
+                            return Ok(serde_json::from_str("{}").unwrap());
+                        }
                         return resp.json().await;
-{{else}}
-                        return Ok(resp);
-{{/if}}
                     }
                     if let Some(ra_delay) = Self::parse_retry_after(&resp) {
                         retry_after_used = true;
