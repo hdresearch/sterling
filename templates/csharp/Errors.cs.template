@@ -29,6 +29,26 @@ namespace VersSdk
             Headers = headers;
         }
 
+        /// <summary>
+        /// Extract the human-readable error message from the response body.
+        /// Looks for an "error" or "message" field in the JSON body,
+        /// or falls back to the raw message.
+        /// </summary>
+        public string ErrorMessage
+        {
+            get
+            {
+                if (Body is Dictionary<string, object> dict)
+                {
+                    if (dict.TryGetValue("error", out var err) && err is string errStr)
+                        return errStr;
+                    if (dict.TryGetValue("message", out var msg) && msg is string msgStr)
+                        return msgStr;
+                }
+                return Message;
+            }
+        }
+
         private static string FormatMessage(int? statusCode, object? body, string? message)
         {
             var msg = message ?? body?.ToString();

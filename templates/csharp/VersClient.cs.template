@@ -95,6 +95,13 @@ namespace VersSdk
             return statusCode >= 500 || RetryableStatusCodes.Contains(statusCode);
         }
 
+        /// <summary>Convert a query parameter value to its string representation, with correct boolean casing.</summary>
+        private static string ToQueryString(object? value)
+        {
+            if (value is bool b) return b ? "true" : "false";
+            return value?.ToString() ?? "";
+        }
+
         private static double RetryDelay(int attempt)
         {
             var baseDelay = 0.5 * Math.Pow(2, attempt);
@@ -133,11 +140,19 @@ namespace VersSdk
 
             if (!string.IsNullOrEmpty(body))
             {
-                try
+                var ct = response.Content.Headers.ContentType?.MediaType ?? "";
+                if (ct.Contains("application/json"))
                 {
-                    parsedBody = JsonSerializer.Deserialize<Dictionary<string, object>>(body!);
+                    try
+                    {
+                        parsedBody = JsonSerializer.Deserialize<Dictionary<string, object>>(body!);
+                    }
+                    catch
+                    {
+                        message = body;
+                    }
                 }
-                catch
+                else
                 {
                     message = body;
                 }
@@ -292,7 +307,7 @@ namespace VersSdk
                 qp = new Dictionary<string, string?>();
 {{#each query_params}}
                 if (queryParams.{{pascal_name}} != null)
-                    qp["{{name}}"] = queryParams.{{pascal_name}}.ToString();
+                    qp["{{name}}"] = ToQueryString(queryParams.{{pascal_name}});
 {{/each}}
             }
 {{/if}}

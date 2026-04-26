@@ -48,6 +48,20 @@ class APIError(VersSDKError):
             return msg
         return "(no status code or body)"
 
+    @property
+    def error_message(self) -> str:
+        """Extract the human-readable error message from the response.
+
+        Looks for an ``error`` or ``message`` field in the JSON error body,
+        or falls back to the raw error text.
+        """
+        if isinstance(self.body, dict):
+            if "error" in self.body and isinstance(self.body["error"], str):
+                return self.body["error"]
+            if "message" in self.body and isinstance(self.body["message"], str):
+                return self.body["message"]
+        return str(self)
+
     @classmethod
     def generate(
         cls,

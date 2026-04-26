@@ -22,6 +22,25 @@ open class APIError(
     cause: Throwable? = null,
 ) : VersSDKError(message, cause) {
 
+    /** Extract the human-readable error message from the response body.
+     *  Looks for an "error" or "message" field in the JSON body, or falls back to the raw message. */
+    val errorMessage: String
+        get() {
+            if (body != null) {
+                try {
+                    val map = kotlinx.serialization.json.Json.parseToJsonElement(body)
+                    val obj = map as? kotlinx.serialization.json.JsonObject
+                    obj?.get("error")?.let { e ->
+                        (e as? kotlinx.serialization.json.JsonPrimitive)?.content?.let { return it }
+                    }
+                    obj?.get("message")?.let { m ->
+                        (m as? kotlinx.serialization.json.JsonPrimitive)?.content?.let { return it }
+                    }
+                } catch (_: Exception) {}
+            }
+            return message ?: "(no message)"
+        }
+
     companion object {
         private fun makeMessage(status: Int?, body: String?): String {
             val msg = body?.takeIf { it.isNotBlank() }

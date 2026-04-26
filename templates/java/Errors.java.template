@@ -31,6 +31,20 @@ public final class Errors {
         public Object getBody() { return body; }
         public Map<String, String> getHeaders() { return headers; }
 
+        /** Extract the human-readable error message from the response body.
+         *  Looks for an "error" or "message" field in the JSON body, or falls back to the raw message. */
+        @SuppressWarnings("unchecked")
+        public String getErrorMessage() {
+            if (body instanceof Map) {
+                Map<String, Object> m = (Map<String, Object>) body;
+                Object err = m.get("error");
+                if (err instanceof String) return (String) err;
+                Object msg = m.get("message");
+                if (msg instanceof String) return (String) msg;
+            }
+            return getMessage();
+        }
+
         private static String makeMessage(Integer status, Object body, String message) {
             String msg = null;
             if (body instanceof Map) {

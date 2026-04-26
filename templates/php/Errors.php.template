@@ -40,6 +40,24 @@ class ApiException extends VersSDKException
         parent::__construct(self::makeMessage($status, $body, $message), $code, $previous);
     }
 
+    /**
+     * Extract the human-readable error message from the response body.
+     * Looks for an "error" or "message" field in the JSON body,
+     * or falls back to the raw message.
+     */
+    public function getErrorMessage(): string
+    {
+        if (is_array($this->body)) {
+            if (isset($this->body['error']) && is_string($this->body['error'])) {
+                return $this->body['error'];
+            }
+            if (isset($this->body['message']) && is_string($this->body['message'])) {
+                return $this->body['message'];
+            }
+        }
+        return $this->getMessage();
+    }
+
     private static function makeMessage(?int $status, mixed $body, ?string $message): string
     {
         $msg = null;

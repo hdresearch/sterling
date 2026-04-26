@@ -204,9 +204,14 @@ module VersSdk
 
       body = nil
       message = nil
-      begin
-        body = JSON.parse(response.body)
-      rescue StandardError
+      ct = response["content-type"] || ""
+      if ct.include?("application/json")
+        begin
+          body = JSON.parse(response.body)
+        rescue StandardError
+          message = response.body
+        end
+      else
         message = response.body
       end
 

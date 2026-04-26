@@ -18,6 +18,17 @@ module VersSdk
       super(make_message(status, body, message))
     end
 
+    # Extract the human-readable error message from the response body.
+    # Looks for an "error" or "message" field in the JSON body,
+    # or falls back to the raw message.
+    def error_message
+      if body.is_a?(Hash)
+        return body["error"] if body["error"].is_a?(String)
+        return body["message"] if body["message"].is_a?(String)
+      end
+      message
+    end
+
     def self.generate(status:, body: nil, message: nil, headers: nil)
       return APIConnectionError.new(message: message) if status.nil? || headers.nil?
 

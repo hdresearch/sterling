@@ -50,6 +50,8 @@ pub struct APIError {
     pub kind: APIErrorKind,
 }
 
+impl std::error::Error for APIError {}
+
 impl fmt::Display for APIError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.status, self.body)
@@ -70,6 +72,22 @@ impl APIError {
             _ => APIErrorKind::Other,
         };
         Self { status, headers, body, kind }
+    }
+
+    /// Extract the error message from the response body.
+    ///
+    /// If the body is JSON with an `"error"` or `"message"` field, returns that.
+    /// Otherwise returns the raw body text.
+    pub fn error_message(&self) -> String {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&self.body) {
+            if let Some(msg) = v.get("error").and_then(|v| v.as_str()) {
+                return msg.to_string();
+            }
+            if let Some(msg) = v.get("message").and_then(|v| v.as_str()) {
+                return msg.to_string();
+            }
+        }
+        self.body.clone()
     }
 }
 

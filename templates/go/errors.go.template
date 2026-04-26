@@ -4,6 +4,7 @@
 package {{go_package_name}}
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -42,6 +43,22 @@ const (
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("%d %s", e.Status, e.Body)
+}
+
+// ErrorMessage extracts the human-readable error message from the response.
+// If the body is JSON with an "error" or "message" field, returns that.
+// Otherwise returns the raw body text.
+func (e *APIError) ErrorMessage() string {
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(e.Body), &m); err == nil {
+		if msg, ok := m["error"].(string); ok {
+			return msg
+		}
+		if msg, ok := m["message"].(string); ok {
+			return msg
+		}
+	}
+	return e.Body
 }
 
 // NewAPIError creates an APIError from an HTTP response status, headers, and body.

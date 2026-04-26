@@ -128,11 +128,18 @@ class {{class_name}}Client
         if ($statusCode >= 200 && $statusCode < 300) {
             return;
         }
-        $decoded = json_decode($body, true);
+        $ct = $responseHeaders['content-type'] ?? $responseHeaders['Content-Type'] ?? '';
+        $decoded = null;
         $message = null;
-        if (is_array($decoded) && isset($decoded['message'])) {
-            $message = (string) $decoded['message'];
-        } elseif (!is_array($decoded)) {
+        if (str_contains($ct, 'application/json')) {
+            $decoded = json_decode($body, true);
+            if (is_array($decoded) && isset($decoded['message'])) {
+                $message = (string) $decoded['message'];
+            } elseif (!is_array($decoded)) {
+                $message = $body;
+                $decoded = null;
+            }
+        } else {
             $message = $body;
         }
         throw ApiException::generate($statusCode, $decoded, $message, $responseHeaders);
@@ -317,7 +324,7 @@ class {{class_name}}Client
         if ($params !== null) {
 {{#each query_params}}
             if ($params->{{name}} !== null) {
-                $query['{{name}}'] = $params->{{name}};
+                $query['{{name}}'] = is_bool($params->{{name}}) ? ($params->{{name}} ? 'true' : 'false') : $params->{{name}};
             }
 {{/each}}
         }

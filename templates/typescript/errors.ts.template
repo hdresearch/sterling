@@ -34,6 +34,19 @@ export class APIError<
     this.error = error;
   }
 
+  /**
+   * Extract the human-readable error message from the response.
+   *
+   * Looks for an `error` or `message` field in the JSON error body,
+   * or falls back to the raw error text.
+   */
+  get errorMessage(): string {
+    const e = this.error as Record<string, any> | undefined;
+    if (e?.error && typeof e.error === "string") return e.error;
+    if (e?.message && typeof e.message === "string") return e.message;
+    return this.message;
+  }
+
   private static makeMessage(status: number | undefined, error: any, message: string | undefined): string {
     const msg =
       error?.message

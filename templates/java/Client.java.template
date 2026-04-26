@@ -115,7 +115,8 @@ public class VersClient implements AutoCloseable {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             if (attempt > 0 && !retryAfterUsed) {
                 long delay = retryDelay(attempt - 1);
-                logger.info(() -> "retry attempt " + attempt + "/" + maxRetries + " for " + method + " " + path);
+                final int attemptNum = attempt;
+                logger.info(() -> "retry attempt " + attemptNum + "/" + maxRetries + " for " + method + " " + path);
                 Thread.sleep(delay);
             }
             retryAfterUsed = false;
@@ -191,9 +192,14 @@ public class VersClient implements AutoCloseable {
         }
         Object body = null;
         String message = null;
-        try {
-            body = objectMapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {});
-        } catch (Exception e) {
+        String contentType = response.headers().firstValue("content-type").orElse("");
+        if (contentType.contains("application/json")) {
+            try {
+                body = objectMapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {});
+            } catch (Exception e) {
+                message = response.body();
+            }
+        } else {
             message = response.body();
         }
         Map<String, String> headers = new java.util.HashMap<>();

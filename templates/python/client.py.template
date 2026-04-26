@@ -140,9 +140,13 @@ class {{class_name}}Client:
             return
         body: Any = None
         message: str | None = None
-        try:
-            body = response.json()
-        except Exception:
+        ct = response.headers.get("content-type", "")
+        if "application/json" in ct:
+            try:
+                body = response.json()
+            except Exception:
+                message = response.text
+        else:
             message = response.text
         headers = dict(response.headers)
         raise APIError.generate(

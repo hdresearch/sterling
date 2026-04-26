@@ -139,7 +139,7 @@ impl Client {
 
 {{#each operations}}
     /// {{summary}}
-    pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{#if is_array_response}}Vec<{{response_type}}>{{else}}{{response_type}}{{/if}}{{else}}serde_json::Value{{/if}}, reqwest::Error> {
+    pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{#if is_array_response}}Vec<{{response_type}}>{{else}}{{response_type}}{{/if}}{{else}}serde_json::Value{{/if}}, crate::errors::SDKError> {
 {{#if has_path_params}}
         let mut url = format!("{}{}", self.base_url, format!("{{path_interpolate_rust}}", {{rust_format_args}}));
 {{else}}
@@ -215,12 +215,26 @@ impl Client {
                     if self.log_level >= LogLevel::Debug {
                         log::debug!("response: {} for {{method}} {}", resp.status().as_u16(), url);
                     }
-                    if !Self::is_retryable_status(resp.status().as_u16()) || attempt == self.max_retries {
+                    let status = resp.status().as_u16();
+                    if !Self::is_retryable_status(status) || attempt == self.max_retries {
+                        // Check for error responses before attempting to deserialize
+                        if status < 200 || status >= 300 {
+                            let headers: Vec<(String, String)> = resp.headers().iter()
+                                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+                                .collect();
+                            let body = resp.text().await.unwrap_or_default();
+                            if self.log_level >= LogLevel::Error {
+                                log::error!("API error: {} {{method}} {}", status, url);
+                            }
+                            return Err(crate::errors::SDKError::API(
+                                crate::errors::APIError::from_response(status, headers, body)
+                            ));
+                        }
                         let content_length = resp.content_length().unwrap_or(1);
                         if content_length == 0 {
                             return Ok(serde_json::from_str("{}").unwrap());
                         }
-                        return resp.json().await;
+                        return resp.json().await.map_err(crate::errors::SDKError::from);
                     }
                     if let Some(ra_delay) = Self::parse_retry_after(&resp) {
                         retry_after_used = true;
@@ -236,13 +250,13 @@ impl Client {
                         log::error!("connection error: {{method}} {} - {}", url, e);
                     }
                     if attempt == self.max_retries {
-                        return Err(e);
+                        return Err(crate::errors::SDKError::from(e));
                     }
                     last_err = Some(e);
                 }
             }
         }
-        Err(last_err.unwrap())
+        Err(crate::errors::SDKError::from(last_err.unwrap()))
     }
 
 {{/each}}
