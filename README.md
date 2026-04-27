@@ -121,6 +121,10 @@ It generates SDKs and pushes to per-language repos (`vers-sdk-ts`, `vers-sdk-rus
 Note: vers-docs OpenAPI sync is handled by Chelsea's own `sync-openapi-to-docs.yaml`
 workflow — Sterling does not duplicate that.
 
+## Acknowledgments
+
+Thanks to [@cartazio](https://github.com/cartazio) for identifying ambiguities in HTTP error response handling that motivated the Content-Type sniffing, error message extraction, and boolean query parameter fixes across all nine language templates.
+
 ## License
 
 MIT
