@@ -181,6 +181,48 @@ jobs:
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/csharp-sdk.git
         git push -f origin HEAD:main
 
+    - name: Push Dart SDK
+      if: success()
+      env:
+        GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
+      run: |
+        cd generated/dart
+        git init
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
+        git add -A
+        git commit -m "Update Dart SDK from OpenAPI spec" || exit 0
+        git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/dart-sdk.git
+        git push -f origin HEAD:main
+
+    - name: Push Scala SDK
+      if: success()
+      env:
+        GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
+      run: |
+        cd generated/scala
+        git init
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
+        git add -A
+        git commit -m "Update Scala SDK from OpenAPI spec" || exit 0
+        git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/scala-sdk.git
+        git push -f origin HEAD:main
+
+    - name: Push Swift SDK
+      if: success()
+      env:
+        GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
+      run: |
+        cd generated/swift
+        git init
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
+        git add -A
+        git commit -m "Update Swift SDK from OpenAPI spec" || exit 0
+        git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/swift-sdk.git
+        git push -f origin HEAD:main
+
     # ─── Publish to package registries ──────────────────────────────────
 
     # --- npm (TypeScript) ---

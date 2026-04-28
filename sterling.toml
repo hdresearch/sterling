@@ -51,6 +51,21 @@ language = "csharp"
 repository = "hdresearch/csharp-sdk"
 output_dir = "./generated/csharp"
 
+[targets.dart]
+language = "dart"
+repository = "hdresearch/dart-sdk"
+output_dir = "./generated/dart"
+
+[targets.scala]
+language = "scala"
+repository = "hdresearch/scala-sdk"
+output_dir = "./generated/scala"
+
+[targets.swift]
+language = "swift"
+repository = "hdresearch/swift-sdk"
+output_dir = "./generated/swift"
+
 [llm]
 provider = "anthropic"
 api_key = "${ANTHROPIC_API_KEY}"
