@@ -1,0 +1,14 @@
+name: {{dart_package_name}}
+description: Generated SDK for {{spec_title}}
+version: {{project_version}}
+repository: https://github.com/{{repository}}
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  http: ^1.2.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0

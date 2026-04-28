@@ -1,0 +1,12 @@
+ThisBuild / version := "{{project_version}}"
+ThisBuild / scalaVersion := "3.4.2"
+ThisBuild / organization := "com.vers"
+
+lazy val root = (project in file("."))
+  .settings(
+    name := "{{package_name}}",
+    libraryDependencies ++= Seq(
+      "com.lihaoyi" %% "upickle" % "4.0.2",
+      "org.scalatest" %% "scalatest" % "3.2.19" % Test
+    )
+  )

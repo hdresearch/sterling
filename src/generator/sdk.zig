@@ -45,6 +45,9 @@ pub const SDKGenerator = struct {
             .ruby => try self.generateRuby(target),
             .php => try self.generatePhp(target),
             .csharp => try self.generateCsharp(target),
+            .dart => try self.generateDart(target),
+            .scala => try self.generateScala(target),
+            .swift => try self.generateSwift(target),
         }
     }
 
@@ -177,6 +180,13 @@ pub const SDKGenerator = struct {
                             try c.putString("path_params_csharp", param_names.csharp_params);
                             try c.putString("path_interpolate_csharp", param_names.csharp_interpolate);
                             try c.putString("php_format_args", param_names.php_format_args);
+                            // Dart, Scala, Swift path params
+                            try c.putString("path_params_dart", param_names.dart_params);
+                            try c.putString("path_interpolate_dart", param_names.dart_interpolate);
+                            try c.putString("path_params_scala", param_names.scala_params);
+                            try c.putString("path_interpolate_scala", param_names.scala_interpolate);
+                            try c.putString("path_params_swift", param_names.swift_params);
+                            try c.putString("path_interpolate_swift", param_names.swift_interpolate);
                         }
 
                         // Body
@@ -254,6 +264,9 @@ pub const SDKGenerator = struct {
                                 try qc.putString("ruby_type", self.queryParamTypeRuby(schema_type));
                                 try qc.putString("php_type", self.queryParamTypePhp(schema_type));
                                 try qc.putString("csharp_type", self.queryParamTypeCsharp(schema_type));
+                                try qc.putString("dart_type", self.queryParamTypeDart(schema_type));
+                                try qc.putString("scala_type", self.queryParamTypeScala(schema_type));
+                                try qc.putString("swift_type", self.queryParamTypeSwift(schema_type));
                                 // Go format helper: how to convert to string for URL
                                 try qc.putString("go_format", self.queryParamGoFormat(param.name, schema_type));
                                 try query_params_list.append(qc);
@@ -272,6 +285,9 @@ pub const SDKGenerator = struct {
                             try c.putString("query_params_py", try self.buildQueryParamStringPython(op));
                             try c.putString("query_params_go", try self.buildQueryParamStringGo(op));
                             try c.putString("query_params_rust", try self.buildQueryParamStringRust(op));
+                            try c.putString("query_params_dart", try self.buildQueryParamStringDart(op));
+                            try c.putString("query_params_scala", try self.buildQueryParamStringScala(op));
+                            try c.putString("query_params_swift", try self.buildQueryParamStringSwift(op));
 
                             // Params type name for bundled query param interfaces
                             var pascal_buf2: [256]u8 = undefined;
@@ -320,6 +336,13 @@ pub const SDKGenerator = struct {
         csharp_params: []const u8,
         csharp_interpolate: []const u8,
         php_format_args: []const u8,
+        // Dart, Scala, Swift
+        dart_params: []const u8,
+        dart_interpolate: []const u8,
+        scala_params: []const u8,
+        scala_interpolate: []const u8,
+        swift_params: []const u8,
+        swift_interpolate: []const u8,
     };
 
     fn extractPathParamNames(self: *SDKGenerator, path: []const u8) !PathParamInfo {
@@ -332,11 +355,17 @@ pub const SDKGenerator = struct {
         var kotlin_params = std.array_list.Managed(u8).init(self.allocator);
         var php_params = std.array_list.Managed(u8).init(self.allocator);
         var csharp_params = std.array_list.Managed(u8).init(self.allocator);
+        var dart_params = std.array_list.Managed(u8).init(self.allocator);
+        var scala_params = std.array_list.Managed(u8).init(self.allocator);
+        var swift_params = std.array_list.Managed(u8).init(self.allocator);
         var ts_interp = std.array_list.Managed(u8).init(self.allocator);
         var py_interp = std.array_list.Managed(u8).init(self.allocator);
         var go_interp = std.array_list.Managed(u8).init(self.allocator);
         var rust_interp = std.array_list.Managed(u8).init(self.allocator);
         var csharp_interp = std.array_list.Managed(u8).init(self.allocator);
+        var dart_interp = std.array_list.Managed(u8).init(self.allocator);
+        var scala_interp = std.array_list.Managed(u8).init(self.allocator);
+        var swift_interp = std.array_list.Managed(u8).init(self.allocator);
         var go_fmt_args = std.array_list.Managed(u8).init(self.allocator);
         var rust_fmt_args = std.array_list.Managed(u8).init(self.allocator);
         var php_fmt_args = std.array_list.Managed(u8).init(self.allocator);
@@ -359,6 +388,9 @@ pub const SDKGenerator = struct {
                     try kotlin_params.appendSlice(", ");
                     try php_params.appendSlice(", ");
                     try csharp_params.appendSlice(", ");
+                    try dart_params.appendSlice(", ");
+                    try scala_params.appendSlice(", ");
+                    try swift_params.appendSlice(", ");
                 }
                 // TS: name: string
                 try ts_params.appendSlice(name);
@@ -386,6 +418,15 @@ pub const SDKGenerator = struct {
                 // C#: string name
                 try csharp_params.appendSlice("string ");
                 try csharp_params.appendSlice(name);
+                // Dart: String name
+                try dart_params.appendSlice("String ");
+                try dart_params.appendSlice(name);
+                // Scala: name: String
+                try scala_params.appendSlice(name);
+                try scala_params.appendSlice(": String");
+                // Swift: name: String
+                try swift_params.appendSlice(name);
+                try swift_params.appendSlice(": String");
 
                 // Interpolation patterns
                 try ts_interp.appendSlice("${");
@@ -407,6 +448,19 @@ pub const SDKGenerator = struct {
                 try csharp_interp.appendSlice(name);
                 try csharp_interp.append('}');
 
+                // Dart: use string interpolation $name
+                try dart_interp.append('$');
+                try dart_interp.appendSlice(name);
+
+                // Scala: use string interpolation $name
+                try scala_interp.append('$');
+                try scala_interp.appendSlice(name);
+
+                // Swift: use string interpolation \(name)
+                try swift_interp.appendSlice("\\(");
+                try swift_interp.appendSlice(name);
+                try swift_interp.append(')');
+
                 // Format arguments for Go, Rust, PHP
                 if (param_count > 0) {
                     try go_fmt_args.appendSlice(", ");
@@ -426,6 +480,9 @@ pub const SDKGenerator = struct {
                 try go_interp.append(path[i]);
                 try rust_interp.append(path[i]);
                 try csharp_interp.append(path[i]);
+                try dart_interp.append(path[i]);
+                try scala_interp.append(path[i]);
+                try swift_interp.append(path[i]);
                 i += 1;
             }
         }
@@ -448,6 +505,12 @@ pub const SDKGenerator = struct {
             .csharp_params = try csharp_params.toOwnedSlice(),
             .csharp_interpolate = try csharp_interp.toOwnedSlice(),
             .php_format_args = try php_fmt_args.toOwnedSlice(),
+            .dart_params = try dart_params.toOwnedSlice(),
+            .dart_interpolate = try dart_interp.toOwnedSlice(),
+            .scala_params = try scala_params.toOwnedSlice(),
+            .scala_interpolate = try scala_interp.toOwnedSlice(),
+            .swift_params = try swift_params.toOwnedSlice(),
+            .swift_interpolate = try swift_interp.toOwnedSlice(),
         };
     }
 
@@ -710,6 +773,53 @@ pub const SDKGenerator = struct {
         return try buf.toOwnedSlice();
     }
 
+    fn buildQueryParamStringDart(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(self.queryParamTypeDart(param.schema_type orelse "string"));
+                try buf.appendSlice(" ");
+                try buf.appendSlice(param.name);
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildQueryParamStringScala(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(param.name);
+                try buf.appendSlice(": ");
+                try buf.appendSlice(self.queryParamTypeScala(param.schema_type orelse "string"));
+                try buf.appendSlice(" = None");
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
+    fn buildQueryParamStringSwift(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(param.name);
+                try buf.appendSlice(": ");
+                try buf.appendSlice(self.queryParamTypeSwift(param.schema_type orelse "string"));
+                try buf.appendSlice(" = nil");
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
     // ── Model context building from components/schemas ──────────────────
 
     fn buildModelContexts(self: *SDKGenerator, base_ctx: *template.Context) ![]const *template.Context {
@@ -816,6 +926,9 @@ pub const SDKGenerator = struct {
                             try vpc.putBool("is_renamed", true);
                         } else {
                             try vpc.putString("rust_name", vprop.name);
+                        try vpc.putString("dart_type", self.resolveTypeDart(vprop));
+                        try vpc.putString("scala_type", self.resolveTypeScala(vprop));
+                        try vpc.putString("swift_type", self.resolveTypeSwift(vprop));
                             try vpc.putBool("is_renamed", false);
                         }
                         vprop_ctxs[vpi] = vpc;
@@ -885,6 +998,9 @@ pub const SDKGenerator = struct {
                             try nfc.putString("ruby_type", self.resolveTypeRuby(nprop));
                             try nfc.putString("php_type", self.resolveTypePhp(nprop));
                             try nfc.putString("csharp_type", self.resolveTypeCsharp(nprop));
+                            try nfc.putString("dart_type", self.resolveTypeDart(nprop));
+                            try nfc.putString("scala_type", self.resolveTypeScala(nprop));
+                            try nfc.putString("swift_type", self.resolveTypeSwift(nprop));
                             nested_field_ctxs[ni] = nfc;
                         }
                         try ntc.putList("fields", @ptrCast(nested_field_ctxs));
@@ -900,6 +1016,9 @@ pub const SDKGenerator = struct {
                         try pc.putString("ruby_type", self.resolveTypeRuby(prop));
                         try pc.putString("php_type", self.resolveTypePhp(prop));
                         try pc.putString("csharp_type", self.resolveTypeCsharp(prop));
+                        try pc.putString("dart_type", self.resolveTypeDart(prop));
+                        try pc.putString("scala_type", self.resolveTypeScala(prop));
+                        try pc.putString("swift_type", self.resolveTypeSwift(prop));
 
                         // Has $ref?
                         if (prop.ref) |ref| {
@@ -1133,6 +1252,81 @@ pub const SDKGenerator = struct {
         return "object";
     }
 
+    // ── Type resolvers for Dart, Scala, Swift ─────────────────────────
+
+    fn resolveTypeDart(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "dynamic";
+        if (std.mem.eql(u8, t, "string")) return "String";
+        if (std.mem.eql(u8, t, "integer")) return "int";
+        if (std.mem.eql(u8, t, "number")) return "double";
+        if (std.mem.eql(u8, t, "boolean")) return "bool";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "List<{s}>", .{ir}) catch return "List<dynamic>";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "List<String>";
+                if (std.mem.eql(u8, it, "integer")) return "List<int>";
+                if (std.mem.eql(u8, it, "number")) return "List<double>";
+                if (std.mem.eql(u8, it, "boolean")) return "List<bool>";
+            }
+            return "List<dynamic>";
+        }
+        if (std.mem.eql(u8, t, "object")) return "Map<String, dynamic>";
+        return "dynamic";
+    }
+
+    fn resolveTypeScala(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "ujson.Value";
+        if (std.mem.eql(u8, t, "string")) return "String";
+        if (std.mem.eql(u8, t, "integer")) {
+            if (prop.format) |f| {
+                if (std.mem.eql(u8, f, "int32")) return "Int";
+            }
+            return "Long";
+        }
+        if (std.mem.eql(u8, t, "number")) return "Double";
+        if (std.mem.eql(u8, t, "boolean")) return "Boolean";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "Seq[{s}]", .{ir}) catch return "Seq[ujson.Value]";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "Seq[String]";
+                if (std.mem.eql(u8, it, "integer")) return "Seq[Long]";
+                if (std.mem.eql(u8, it, "number")) return "Seq[Double]";
+                if (std.mem.eql(u8, it, "boolean")) return "Seq[Boolean]";
+            }
+            return "Seq[ujson.Value]";
+        }
+        if (std.mem.eql(u8, t, "object")) return "Map[String, ujson.Value]";
+        return "ujson.Value";
+    }
+
+    fn resolveTypeSwift(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
+        if (prop.ref) |ref| return ref;
+        const t = prop.type_name orelse return "Any";
+        if (std.mem.eql(u8, t, "string")) return "String";
+        if (std.mem.eql(u8, t, "integer")) {
+            if (prop.format) |f| {
+                if (std.mem.eql(u8, f, "int32")) return "Int32";
+            }
+            return "Int";
+        }
+        if (std.mem.eql(u8, t, "number")) return "Double";
+        if (std.mem.eql(u8, t, "boolean")) return "Bool";
+        if (std.mem.eql(u8, t, "array")) {
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "[{s}]", .{ir}) catch return "[Any]";
+            if (prop.items_type) |it| {
+                if (std.mem.eql(u8, it, "string")) return "[String]";
+                if (std.mem.eql(u8, it, "integer")) return "[Int]";
+                if (std.mem.eql(u8, it, "number")) return "[Double]";
+                if (std.mem.eql(u8, it, "boolean")) return "[Bool]";
+            }
+            return "[Any]";
+        }
+        if (std.mem.eql(u8, t, "object")) return "[String: Any]";
+        return "Any";
+    }
+
     // ── Query param types for new languages ─────────────────────────────
 
     fn queryParamTypeJava(_: *SDKGenerator, schema_type: []const u8) []const u8 {
@@ -1168,6 +1362,27 @@ pub const SDKGenerator = struct {
         if (std.mem.eql(u8, schema_type, "integer")) return "long?";
         if (std.mem.eql(u8, schema_type, "number")) return "double?";
         return "string?";
+    }
+
+    fn queryParamTypeDart(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "bool?";
+        if (std.mem.eql(u8, schema_type, "integer")) return "int?";
+        if (std.mem.eql(u8, schema_type, "number")) return "double?";
+        return "String?";
+    }
+
+    fn queryParamTypeScala(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "Option[Boolean]";
+        if (std.mem.eql(u8, schema_type, "integer")) return "Option[Long]";
+        if (std.mem.eql(u8, schema_type, "number")) return "Option[Double]";
+        return "Option[String]";
+    }
+
+    fn queryParamTypeSwift(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "Bool?";
+        if (std.mem.eql(u8, schema_type, "integer")) return "Int?";
+        if (std.mem.eql(u8, schema_type, "number")) return "Double?";
+        return "String?";
     }
 
     // ── Resource grouping for TypeScript ─────────────────────────────────
@@ -1580,6 +1795,83 @@ pub const SDKGenerator = struct {
         std.debug.print("Generated C# SDK at {s}\n", .{d});
     }
 
+    fn generateDart(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const lib_dir = try std.fmt.allocPrint(self.allocator, "{s}/lib", .{d});
+        defer self.allocator.free(lib_dir);
+        self.makeDirRecursive(lib_dir) catch {};
+
+        const ctx = try self.buildBaseContext();
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
+        // Dart needs repository for pubspec and hyphen-free package name
+        try ctx.putString("repository", target.repository);
+        // Dart identifiers can't have hyphens
+        const pkg = self.cfg.project.name;
+        var dart_pkg_buf: [256]u8 = undefined;
+        var dart_pkg_len: usize = 0;
+        for (pkg) |c| {
+            if (dart_pkg_len < 256) {
+                dart_pkg_buf[dart_pkg_len] = if (c == '-') '_' else c;
+                dart_pkg_len += 1;
+            }
+        }
+        try ctx.putString("dart_package_name", try self.allocator.dupe(u8, dart_pkg_buf[0..dart_pkg_len]));
+
+        try self.renderTo("templates/dart/client.dart.template", d, "lib/client.dart", ctx);
+        try self.renderTo("templates/dart/models.dart.template", d, "lib/models.dart", ctx);
+        try self.renderTo("templates/dart/errors.dart.template", d, "lib/errors.dart", ctx);
+        try self.renderTo("templates/dart/index.dart.template", d, "lib/index.dart", ctx);
+        try self.renderTo("templates/dart/pubspec.yaml.template", d, "pubspec.yaml", ctx);
+        try self.renderTo("templates/dart/README.md.template", d, "README.md", ctx);
+        std.debug.print("Generated Dart SDK at {s}\n", .{d});
+    }
+
+    fn generateScala(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/scala/com/vers/sdk", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
+
+        const ctx = try self.buildBaseContext();
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
+
+        try self.renderTo("templates/scala/Client.scala.template", d, "src/main/scala/com/vers/sdk/Client.scala", ctx);
+        try self.renderTo("templates/scala/Models.scala.template", d, "src/main/scala/com/vers/sdk/Models.scala", ctx);
+        try self.renderTo("templates/scala/Errors.scala.template", d, "src/main/scala/com/vers/sdk/Errors.scala", ctx);
+        try self.renderTo("templates/scala/build.sbt.template", d, "build.sbt", ctx);
+        try self.renderTo("templates/scala/README.md.template", d, "README.md", ctx);
+        std.debug.print("Generated Scala SDK at {s}\n", .{d});
+    }
+
+    fn generateSwift(self: *SDKGenerator, target: config.Config.Target) !void {
+        const d = target.output_dir;
+        self.makeDirRecursive(d) catch {};
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/Sources", .{d});
+        defer self.allocator.free(src);
+        self.makeDirRecursive(src) catch {};
+
+        const ctx = try self.buildBaseContext();
+        const ops = try self.buildOperationContexts(ctx);
+        try ctx.putList("operations", ops);
+        try ctx.putList("models", try self.buildModelContexts(ctx));
+        try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
+
+        try self.renderTo("templates/swift/Client.swift.template", d, "Sources/Client.swift", ctx);
+        try self.renderTo("templates/swift/Models.swift.template", d, "Sources/Models.swift", ctx);
+        try self.renderTo("templates/swift/Errors.swift.template", d, "Sources/Errors.swift", ctx);
+        try self.renderTo("templates/swift/Package.swift.template", d, "Package.swift", ctx);
+        try self.renderTo("templates/swift/README.md.template", d, "README.md", ctx);
+        std.debug.print("Generated Swift SDK at {s}\n", .{d});
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     pub fn makeDirRecursive(_: *SDKGenerator, path: []const u8) !void {
@@ -1612,7 +1904,10 @@ pub const SDKGenerator = struct {
                 std.mem.endsWith(u8, rel, ".kt") or
                 std.mem.endsWith(u8, rel, ".rb") or
                 std.mem.endsWith(u8, rel, ".php") or
-                std.mem.endsWith(u8, rel, ".cs");
+                std.mem.endsWith(u8, rel, ".cs") or
+                std.mem.endsWith(u8, rel, ".dart") or
+                std.mem.endsWith(u8, rel, ".scala") or
+                std.mem.endsWith(u8, rel, ".swift");
             if (is_code) {
                 const lang = if (std.mem.endsWith(u8, rel, ".ts")) "typescript"
                     else if (std.mem.endsWith(u8, rel, ".rs")) "rust"
@@ -1623,6 +1918,9 @@ pub const SDKGenerator = struct {
                     else if (std.mem.endsWith(u8, rel, ".rb")) "ruby"
                     else if (std.mem.endsWith(u8, rel, ".php")) "php"
                     else if (std.mem.endsWith(u8, rel, ".cs")) "csharp"
+                    else if (std.mem.endsWith(u8, rel, ".dart")) "dart"
+                    else if (std.mem.endsWith(u8, rel, ".scala")) "scala"
+                    else if (std.mem.endsWith(u8, rel, ".swift")) "swift"
                     else "zig";
                 std.debug.print("  Enhancing {s}...\n", .{rel});
                 break :blk self.enhancer.?.enhance(content, lang, rel);

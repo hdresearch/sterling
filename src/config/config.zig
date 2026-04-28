@@ -28,6 +28,9 @@ pub const Config = struct {
             ruby,
             php,
             csharp,
+            dart,
+            scala,
+            swift,
         };
     };
 
@@ -161,6 +164,9 @@ fn parseLanguage(lang: []const u8) ?Config.Target.Language {
     if (std.mem.eql(u8, lang, "ruby")) return .ruby;
     if (std.mem.eql(u8, lang, "php")) return .php;
     if (std.mem.eql(u8, lang, "csharp")) return .csharp;
+    if (std.mem.eql(u8, lang, "dart")) return .dart;
+    if (std.mem.eql(u8, lang, "scala")) return .scala;
+    if (std.mem.eql(u8, lang, "swift")) return .swift;
     return null;
 }
 
