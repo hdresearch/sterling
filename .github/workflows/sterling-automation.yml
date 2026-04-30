@@ -445,7 +445,7 @@ jobs:
         jar -cf bundle.jar -C . .
         RESP=$(curl -s -w "\n%{http_code}" \
           -u "$MAVEN_USERNAME:$MAVEN_PASSWORD" \
-          -F "bundle=@/tmp/scala-bundle.jar" \
+          -F "bundle=@bundle.jar" \
           "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC")
         HTTP_CODE=$(echo "$RESP" | tail -1)
         BODY=$(echo "$RESP" | head -n -1)
