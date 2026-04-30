@@ -1673,6 +1673,7 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/typescript/tsconfig.json.template", d, "tsconfig.json", ctx);
         try self.renderTo("templates/typescript/package.json.template", d, "package.json", ctx);
         try self.renderTo("templates/typescript/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/typescript/.gitignore.template", d, ".gitignore", ctx);
         try self.renderTo("templates/typescript/lib/ssh/client.ts.template", d, "src/lib/ssh/client.ts", ctx);
         try self.renderTo("templates/typescript/lib/ssh/errors.ts.template", d, "src/lib/ssh/errors.ts", ctx);
         try self.renderTo("templates/typescript/lib/ssh/types.ts.template", d, "src/lib/ssh/types.ts", ctx);
