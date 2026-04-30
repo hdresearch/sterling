@@ -625,6 +625,105 @@
         ]
       }
     },
+    "/api/v1/deploy": {
+      "post": {
+        "tags": [
+          "deploy"
+        ],
+        "summary": "Deploy a GitHub repository to a new Vers project.",
+        "operationId": "deploy_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Deploy initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Repository not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Project name conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "GitHub App not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/v1/domains": {
       "get": {
         "tags": [
@@ -1032,6 +1131,415 @@
           },
           "404": {
             "description": "Environment variable not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/images": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "operationId": "list_images",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "path",
+            "description": "Maximum number of images to return (default: 50, max: 100)",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "path",
+            "description": "Number of images to skip (default: 0)",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of base images",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBaseImagesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/images/create": {
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "operationId": "create_image",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBaseImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Image creation job started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBaseImageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Image name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/images/images/{base_image_id}": {
+      "delete": {
+        "tags": [
+          "images"
+        ],
+        "operationId": "delete_image",
+        "parameters": [
+          {
+            "name": "base_image_id",
+            "in": "path",
+            "description": "Base image ID (UUID)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteBaseImageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden - not owner of image",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Image not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Image is in use by VMs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/images/upload": {
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "operationId": "upload_image",
+        "parameters": [
+          {
+            "name": "image_name",
+            "in": "path",
+            "description": "The name for the new base image",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "size_mib",
+            "in": "path",
+            "description": "Size of the image in MiB (default: 512, min: 512, max: 32768)",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Image upload started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadBaseImageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Image name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Upload too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/images/{image_name}/status": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "operationId": "get_image_status",
+        "parameters": [
+          {
+            "name": "image_name",
+            "in": "path",
+            "description": "Image name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseImageStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Image not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/keys/validate": {
+      "post": {
+        "tags": [
+          "keys"
+        ],
+        "operationId": "validate_key",
+        "responses": {
+          "200": {
+            "description": "API key is valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateKeyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API key is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -2022,6 +2530,75 @@
         ]
       }
     },
+    "/api/v1/system/version": {
+      "get": {
+        "tags": [],
+        "operationId": "version_handler",
+        "responses": {
+          "200": {
+            "description": "Version information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrchestratorVersion"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vm": {
+      "get": {
+        "tags": [
+          "vms"
+        ],
+        "operationId": "list_vms",
+        "responses": {
+          "200": {
+            "description": "List all VMs accessible to the API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VM"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/v1/vm/branch/by_commit/{commit_id}": {
       "post": {
         "tags": [
@@ -2762,6 +3339,17 @@
             }
           }
         ],
+        "requestBody": {
+          "description": "Optional commit metadata",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VmCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "201": {
             "description": "VM committed successfully",
@@ -2871,6 +3459,544 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "VM not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vm/{vm_id}/exec": {
+      "post": {
+        "tags": [
+          "vm"
+        ],
+        "operationId": "exec_vm",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "description": "VM ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VmExecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Command executed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmExecResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "VM not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vm/{vm_id}/exec/stream": {
+      "post": {
+        "tags": [
+          "vm"
+        ],
+        "operationId": "exec_vm_stream",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "description": "VM ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VmExecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "NDJSON stream of stdout/stderr chunks"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "VM not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vm/{vm_id}/exec/stream/attach": {
+      "post": {
+        "tags": [
+          "vm"
+        ],
+        "operationId": "exec_vm_stream_attach",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "description": "VM ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VmExecStreamAttachRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "NDJSON stream replaying from cursor"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "VM not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vm/{vm_id}/files": {
+      "get": {
+        "tags": [
+          "vm"
+        ],
+        "operationId": "read_file_vm",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "description": "VM ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "Absolute path of the file to read",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File contents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmReadFileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "VM not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "vm"
+        ],
+        "operationId": "write_file_vm",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "description": "VM ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VmWriteFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File written successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "VM not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vm/{vm_id}/label": {
+      "patch": {
+        "tags": [
+          "vm"
+        ],
+        "operationId": "label_vm",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelVmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Labels set successfully"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/vm/{vm_id}/logs": {
+      "get": {
+        "tags": [
+          "vm"
+        ],
+        "operationId": "vm_logs",
+        "parameters": [
+          {
+            "name": "vm_id",
+            "in": "path",
+            "description": "VM ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Byte offset into the log file (default: 0)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "max_entries",
+            "in": "query",
+            "description": "Maximum number of log entries to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "stream",
+            "in": "query",
+            "description": "Filter by 'stdout' or 'stderr'",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exec logs retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VmExecLogResponse"
                 }
               }
             }
@@ -3380,6 +4506,74 @@
   },
   "components": {
     "schemas": {
+      "BaseImageInfo": {
+        "type": "object",
+        "required": [
+          "base_image_id",
+          "image_name",
+          "owner_id",
+          "is_public",
+          "source_type",
+          "size_mib",
+          "created_at"
+        ],
+        "properties": {
+          "base_image_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_name": {
+            "type": "string"
+          },
+          "is_public": {
+            "type": "boolean"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "size_mib": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "source_type": {
+            "type": "string"
+          }
+        }
+      },
+      "BaseImageStatusResponse": {
+        "type": "object",
+        "required": [
+          "image_name",
+          "status",
+          "size_mib"
+        ],
+        "properties": {
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_name": {
+            "type": "string"
+          },
+          "size_mib": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "CommitInfo": {
         "type": "object",
         "required": [
@@ -3422,6 +4616,51 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "CreateBaseImageRequest": {
+        "type": "object",
+        "required": [
+          "image_name",
+          "source"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_name": {
+            "type": "string"
+          },
+          "size_mib": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Additional capacity in MiB beyond the actual filesystem size (defaults to 256).\nThe final image size = calculated rootfs size + this value.\nSet to 0 for minimum possible image size, or higher for more free space."
+          },
+          "source": {
+            "$ref": "#/components/schemas/ImageSourceRequest"
+          }
+        }
+      },
+      "CreateBaseImageResponse": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "image_name",
+          "status"
+        ],
+        "properties": {
+          "image_name": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
           }
         }
       },
@@ -3583,6 +4822,21 @@
           }
         }
       },
+      "DeleteBaseImageResponse": {
+        "type": "object",
+        "required": [
+          "deleted",
+          "base_image_id"
+        ],
+        "properties": {
+          "base_image_id": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
       "DeleteDomainResponse": {
         "type": "object",
         "description": "Response body for DELETE /api/v1/domains/{domain_id}",
@@ -3593,6 +4847,96 @@
           "domain_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "DeployRequest": {
+        "type": "object",
+        "description": "Request body for `POST /api/v1/deploy`.",
+        "required": [
+          "repo"
+        ],
+        "properties": {
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Git branch to clone (defaults to repo default branch)."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional project name (defaults to repo name)."
+          },
+          "repo": {
+            "type": "string",
+            "description": "GitHub repository in `owner/repo` format."
+          },
+          "settings": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeploySettings",
+                "description": "Build/run settings."
+              }
+            ]
+          }
+        }
+      },
+      "DeployResponse": {
+        "type": "object",
+        "description": "Response body for `POST /api/v1/deploy`.",
+        "required": [
+          "project_id",
+          "vm_id",
+          "status"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "vm_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "DeploySettings": {
+        "type": "object",
+        "description": "Settings for the deploy build pipeline.",
+        "properties": {
+          "build_command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "install_command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run_command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "working_directory": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -3771,6 +5115,96 @@
         ],
         "description": "Request body for POST /api/v1/vm/from_commit"
       },
+      "ImageSourceRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "image_ref",
+              "type"
+            ],
+            "properties": {
+              "image_ref": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "docker"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "bucket",
+              "key",
+              "type"
+            ],
+            "properties": {
+              "bucket": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "s3"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "LabelVmRequest": {
+        "type": "object",
+        "properties": {
+          "labels": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ListBaseImagesResponse": {
+        "type": "object",
+        "required": [
+          "images",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BaseImageInfo"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ListCommitsResponse": {
         "type": "object",
         "required": [
@@ -3902,6 +5336,29 @@
             "items": {
               "$ref": "#/components/schemas/NewVmResponse"
             }
+          }
+        }
+      },
+      "OrchestratorVersion": {
+        "type": "object",
+        "description": "Response struct for GET api/v1/system/version",
+        "required": [
+          "executable_name",
+          "workspace_version",
+          "git_hash"
+        ],
+        "properties": {
+          "executable_name": {
+            "type": "string",
+            "description": "Executable identifier; should be \"orchestrator\""
+          },
+          "git_hash": {
+            "type": "string",
+            "description": "Current git hash used for the build"
+          },
+          "workspace_version": {
+            "type": "string",
+            "description": "Current workspace version"
           }
         }
       },
@@ -4120,8 +5577,22 @@
           "is_public"
         ],
         "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description for the commit."
+          },
           "is_public": {
             "type": "boolean"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional human-readable name for the commit."
           }
         }
       },
@@ -4167,6 +5638,25 @@
           }
         }
       },
+      "UploadBaseImageResponse": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "image_name",
+          "status"
+        ],
+        "properties": {
+          "image_name": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "VM": {
         "type": "object",
         "required": [
@@ -4180,6 +5670,18 @@
             "type": "string",
             "format": "date-time"
           },
+          "labels": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "owner_id": {
             "type": "string",
             "format": "uuid"
@@ -4190,6 +5692,22 @@
           "vm_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "ValidateKeyResponse": {
+        "type": "object",
+        "description": "Response body for POST /api/keys/validate",
+        "required": [
+          "valid",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "valid": {
+            "type": "boolean"
           }
         }
       },
@@ -4247,6 +5765,34 @@
           }
         }
       },
+      "VmCommitRequest": {
+        "type": "object",
+        "description": "The request body for POST /api/vm/{vm_id}/commit",
+        "properties": {
+          "commit_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "If provided, chelsea will use the requested commit UUID. Otherwise, it will generate a UUID itself."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description for the commit."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional human-readable name for the commit. Defaults to auto-generated name if not provided."
+          }
+        }
+      },
       "VmCommitResponse": {
         "type": "object",
         "description": "The response body for POST /api/vm/{vm_id}/commit",
@@ -4288,6 +5834,18 @@
             ],
             "description": "The kernel name. Currently, must be 'default.bin'"
           },
+          "labels": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "mem_size_mib": {
             "type": [
               "integer",
@@ -4317,6 +5875,192 @@
         "properties": {
           "vm_id": {
             "type": "string"
+          }
+        }
+      },
+      "VmExecLogEntry": {
+        "type": "object",
+        "description": "Individual log entry describing emitted stdout/stderr chunk.",
+        "required": [
+          "timestamp",
+          "stream",
+          "data_b64"
+        ],
+        "properties": {
+          "data_b64": {
+            "type": "string",
+            "description": "Base64-encoded bytes from stdout/stderr chunk."
+          },
+          "exec_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "stream": {
+            "$ref": "#/components/schemas/VmExecLogStream"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "VmExecLogResponse": {
+        "type": "object",
+        "description": "Response for exec log tail requests.",
+        "required": [
+          "entries",
+          "next_offset",
+          "eof"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VmExecLogEntry"
+            },
+            "description": "Returned log entries."
+          },
+          "eof": {
+            "type": "boolean",
+            "description": "True when the end of file was reached."
+          },
+          "next_offset": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Next byte offset to continue from.",
+            "minimum": 0
+          }
+        }
+      },
+      "VmExecLogStream": {
+        "type": "string",
+        "description": "Streams available for exec logging.",
+        "enum": [
+          "stdout",
+          "stderr"
+        ]
+      },
+      "VmExecRequest": {
+        "type": "object",
+        "description": "Request body for POST /api/vm/{vm_id}/exec",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Command and arguments to execute."
+          },
+          "env": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Optional environment variables to set for the process.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "exec_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Optional exec identifier for tracking."
+          },
+          "stdin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional stdin payload passed to the command."
+          },
+          "timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Timeout in seconds (0 = no timeout).",
+            "minimum": 0
+          },
+          "working_dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional working directory for the command."
+          }
+        }
+      },
+      "VmExecResponse": {
+        "type": "object",
+        "description": "Response body for POST /api/vm/{vm_id}/exec",
+        "required": [
+          "exit_code",
+          "stdout",
+          "stderr"
+        ],
+        "properties": {
+          "exec_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Exec identifier associated with this run."
+          },
+          "exit_code": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Exit code returned by the command."
+          },
+          "stderr": {
+            "type": "string",
+            "description": "UTF-8 decoded stderr (lossy)."
+          },
+          "stdout": {
+            "type": "string",
+            "description": "UTF-8 decoded stdout (lossy)."
+          }
+        }
+      },
+      "VmExecStreamAttachRequest": {
+        "type": "object",
+        "description": "Request body for POST /api/vm/{vm_id}/exec/stream/attach",
+        "required": [
+          "exec_id"
+        ],
+        "properties": {
+          "cursor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Optional cursor to resume from (exclusive). If omitted, the full retained backlog is replayed.",
+            "minimum": 0
+          },
+          "exec_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identifier of the exec stream session to reattach to."
+          },
+          "from_latest": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Start streaming after the latest retained chunk (ignores cursor)."
           }
         }
       },
@@ -4372,6 +6116,19 @@
           }
         }
       },
+      "VmReadFileResponse": {
+        "type": "object",
+        "description": "Response body for GET /api/vm/{vm_id}/files",
+        "required": [
+          "content_b64"
+        ],
+        "properties": {
+          "content_b64": {
+            "type": "string",
+            "description": "File contents, base64-encoded."
+          }
+        }
+      },
       "VmResizeDiskRequest": {
         "type": "object",
         "description": "Request body for PATCH /api/vm/{vm_id}/disk",
@@ -4414,7 +6171,8 @@
           "booting",
           "running",
           "paused",
-          "sleeping"
+          "sleeping",
+          "dead"
         ]
       },
       "VmUpdateStateEnum": {
@@ -4435,6 +6193,34 @@
           "state": {
             "$ref": "#/components/schemas/VmUpdateStateEnum",
             "description": "The requested state for the VM"
+          }
+        }
+      },
+      "VmWriteFileRequest": {
+        "type": "object",
+        "description": "Request body for PUT /api/vm/{vm_id}/files",
+        "required": [
+          "path",
+          "content_b64"
+        ],
+        "properties": {
+          "content_b64": {
+            "type": "string",
+            "description": "File contents, base64-encoded."
+          },
+          "create_dirs": {
+            "type": "boolean",
+            "description": "Create parent directories if they don't exist."
+          },
+          "mode": {
+            "type": "integer",
+            "format": "int32",
+            "description": "File mode (e.g. 0644). Defaults to 0644 if omitted.",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string",
+            "description": "Destination path on the VM."
           }
         }
       }

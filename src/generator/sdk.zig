@@ -124,6 +124,10 @@ pub const SDKGenerator = struct {
         const ops = try self.allocator.alloc(*template.Context, count);
         var idx: usize = 0;
 
+        // Track seen operationIds to skip duplicates (e.g. /vm and /vms both list_vms)
+        var seen_ops = std.StringHashMap(void).init(self.allocator);
+        defer seen_ops.deinit();
+
         var path_iter = self.spec.paths.iterator();
         while (path_iter.next()) |entry| {
             const path_str = entry.key_ptr.*;
@@ -132,6 +136,11 @@ pub const SDKGenerator = struct {
             inline for (.{ "get", "post", "put", "delete", "patch" }) |method| {
                 if (@field(pi, method)) |op| {
                     if (op.operationId) |op_id| {
+                        // Skip duplicate operationIds
+                        if (seen_ops.contains(op_id)) {
+                            std.debug.print("⚠️  Skipping duplicate operationId: {s} ({s} {s})\n", .{ op_id, method, path_str });
+                        } else {
+                        try seen_ops.put(op_id, {});
                         const c = try self.allocator.create(template.Context);
                         c.* = template.Context.init(self.allocator);
                         c.parent = parent;
@@ -315,6 +324,7 @@ pub const SDKGenerator = struct {
 
                         ops[idx] = c;
                         idx += 1;
+                    } // else (dedup)
                     }
                 }
             }
