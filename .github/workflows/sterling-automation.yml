@@ -404,7 +404,7 @@ jobs:
           exit 0
         fi
         cd generated/kotlin
-        gradle publish --no-daemon \
+        gradle publishToSonatype closeAndReleaseSonatypeStagingRepository --no-daemon \
           || echo "⚠️ Kotlin Maven Central publish skipped (version may already exist)"
 
     # --- Maven Central (Scala) ---
