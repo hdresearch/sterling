@@ -966,6 +966,7 @@ pub const SDKGenerator = struct {
                             try vpc.putString("rust_name", vprop.name);
                             try vpc.putBool("is_renamed", false);
                         }
+                        try vpc.putBool("is_last", vpi == variant.properties.items.len - 1);
                         vprop_ctxs[vpi] = vpc;
                     }
                     try vc.putList("properties", @ptrCast(vprop_ctxs));
@@ -1014,6 +1015,11 @@ pub const SDKGenerator = struct {
                     }
                 }
                 const union_props = try dedup_list.toOwnedSlice(self.allocator);
+                // Set is_last on the final union property
+                for (union_props, 0..) |up, upi| {
+                    const upc: *template.Context = @ptrCast(@alignCast(up));
+                    try upc.putBool("is_last", upi == union_props.len - 1);
+                }
                 try m.putList("union_properties", @ptrCast(union_props));
             }
 

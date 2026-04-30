@@ -382,7 +382,7 @@ jobs:
           exit 0
         fi
         cd generated/java
-        mvn deploy -B --no-transfer-progress -DskipTests \
+        mvn deploy -B --no-transfer-progress -Dmaven.test.skip=true \
           || echo "⚠️ Maven Central publish skipped (version may already exist)"
 
     # --- Maven Central (Kotlin) ---
