@@ -78,13 +78,13 @@ pub const Client = struct {
 
         for (0..self.max_retries + 1) |attempt| {
             if (attempt > 0) {
-                const base_ms: u64 = 500 * std.math.shl(u64, 1, @intCast(attempt - 1));
-                std.time.sleep(base_ms * std.time.ns_per_ms);
+                const shift: std.math.Log2Int(u64) = @intCast(attempt - 1);
+                const base_ms: u64 = 500 * std.math.shl(u64, 1, shift);
+                std.Thread.sleep(base_ms * std.time.ns_per_ms);
             }
 
             const url_str = std.fmt.allocPrint(self.allocator, "{s}{s}", .{ self.base_url, path }) catch |e| return e;
             defer self.allocator.free(url_str);
-            const uri = std.Uri.parse(url_str) catch return ApiError.ConnectionError;
 
             var http_client = std.http.Client{ .allocator = self.allocator };
             defer http_client.deinit();
@@ -95,35 +95,33 @@ pub const Client = struct {
                 null;
             defer if (auth) |a| self.allocator.free(a);
 
-            var hdr_buf: [8192]u8 = undefined;
-            var req = http_client.open(method, uri, .{
-                .server_header_buffer = &hdr_buf,
-                .extra_headers = if (auth) |a|
-                    &.{ .{ .name = "authorization", .value = a }, .{ .name = "content-type", .value = "application/json" } }
-                else
-                    &.{ .{ .name = "content-type", .value = "application/json" } },
+            var resp_body: std.ArrayList(u8) = .{};
+            errdefer resp_body.deinit(self.allocator);
+
+            var old_writer = resp_body.writer(self.allocator);
+            var adapter_buf: [8192]u8 = undefined;
+            var adapter = old_writer.adaptToNewApi(&adapter_buf);
+
+            const extra_hdrs: []const std.http.Header = if (auth) |a|
+                &.{ .{ .name = "authorization", .value = a }, .{ .name = "content-type", .value = "application/json" } }
+            else
+                &.{ .{ .name = "content-type", .value = "application/json" } };
+
+            const result = http_client.fetch(.{
+                .location = .{ .url = url_str },
+                .method = method,
+                .payload = body_json,
+                .extra_headers = extra_hdrs,
+                .response_writer = &adapter.new_interface,
             }) catch return ApiError.ConnectionError;
-            defer req.deinit();
 
-            if (body_json) |b| req.transfer_encoding = .{ .content_length = b.len };
-            req.send() catch return ApiError.ConnectionError;
-            if (body_json) |b| req.writer().writeAll(b) catch return ApiError.ConnectionError;
-            req.finish() catch return ApiError.ConnectionError;
-            req.wait() catch return ApiError.ConnectionError;
+            adapter.new_interface.flush() catch {};
 
-            last_status = req.status;
-            if (isRetryable(req.status) and attempt < self.max_retries) continue;
-            try statusToError(req.status);
+            last_status = result.status;
+            if (isRetryable(result.status) and attempt < self.max_retries) continue;
+            try statusToError(result.status);
 
-            var resp_body = std.ArrayList(u8).init(self.allocator);
-            errdefer resp_body.deinit();
-            var buf: [4096]u8 = undefined;
-            while (true) {
-                const n = req.reader().read(&buf) catch return ApiError.ConnectionError;
-                if (n == 0) break;
-                resp_body.appendSlice(buf[0..n]) catch |e| return e;
-            }
-            return Response{ .status = req.status, .body = resp_body.toOwnedSlice() catch |e| return e, .allocator = self.allocator };
+            return Response{ .status = result.status, .body = resp_body.toOwnedSlice(self.allocator) catch |e| return e, .allocator = self.allocator };
         }
         try statusToError(last_status);
         return ApiError.ConnectionError;
@@ -136,14 +134,14 @@ pub const Client = struct {
 {{#if has_query_params}}
         const base_path = try std.fmt.allocPrint(self.allocator, "{{path_interpolate_zig}}", .{ {{zig_format_args}} });
         defer self.allocator.free(base_path);
-        var qbuf = std.ArrayList(u8).init(self.allocator);
-        defer qbuf.deinit();
-        try qbuf.appendSlice(base_path);
+        var qbuf: std.ArrayList(u8) = .{};
+        defer qbuf.deinit(self.allocator);
+        try qbuf.appendSlice(self.allocator, base_path);
         var sep: u8 = '?';
 {{#each query_params}}
-        if ({{name}}) |v| { try qbuf.append(sep); try qbuf.appendSlice("{{name}}="); try qbuf.appendSlice(try std.fmt.allocPrint(self.allocator, "{}", .{v})); sep = '&'; }
+        if ({{name}}) |v| { try qbuf.append(self.allocator, sep); try qbuf.appendSlice(self.allocator, "{{name}}="); const vs = try std.fmt.allocPrint(self.allocator, "{}", .{v}); defer self.allocator.free(vs); try qbuf.appendSlice(self.allocator, vs); sep = '&'; }
 {{/each}}
-        const path = try qbuf.toOwnedSlice();
+        const path = try qbuf.toOwnedSlice(self.allocator);
         defer self.allocator.free(path);
         return self.doRequest(.{{method}}, path, {{#if has_body}}body{{else}}null{{/if}}, opts);
 {{else}}
@@ -153,14 +151,14 @@ pub const Client = struct {
 {{/if}}
 {{else}}
 {{#if has_query_params}}
-        var qbuf = std.ArrayList(u8).init(self.allocator);
-        defer qbuf.deinit();
-        try qbuf.appendSlice("{{path}}");
+        var qbuf: std.ArrayList(u8) = .{};
+        defer qbuf.deinit(self.allocator);
+        try qbuf.appendSlice(self.allocator, "{{path}}");
         var sep: u8 = '?';
 {{#each query_params}}
-        if ({{name}}) |v| { try qbuf.append(sep); try qbuf.appendSlice("{{name}}="); try qbuf.appendSlice(try std.fmt.allocPrint(self.allocator, "{}", .{v})); sep = '&'; }
+        if ({{name}}) |v| { try qbuf.append(self.allocator, sep); try qbuf.appendSlice(self.allocator, "{{name}}="); const vs = try std.fmt.allocPrint(self.allocator, "{}", .{v}); defer self.allocator.free(vs); try qbuf.appendSlice(self.allocator, vs); sep = '&'; }
 {{/each}}
-        const path = try qbuf.toOwnedSlice();
+        const path = try qbuf.toOwnedSlice(self.allocator);
         defer self.allocator.free(path);
         return self.doRequest(.{{method}}, path, {{#if has_body}}body{{else}}null{{/if}}, opts);
 {{else}}
