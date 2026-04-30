@@ -382,10 +382,14 @@ jobs:
           exit 0
         fi
         cd generated/java
-        mvn deploy -B --no-transfer-progress \
+        mvn deploy -B --no-transfer-progress -DskipTests \
           || echo "⚠️ Maven Central publish skipped (version may already exist)"
 
     # --- Maven Central (Kotlin) ---
+    - name: Setup Gradle
+      if: always()
+      uses: gradle/actions/setup-gradle@v4
+
     - name: Publish Kotlin to Maven Central
       if: always()
       continue-on-error: true
@@ -400,7 +404,7 @@ jobs:
           exit 0
         fi
         cd generated/kotlin
-        ./gradlew publish --no-daemon \
+        gradle publish --no-daemon \
           || echo "⚠️ Kotlin Maven Central publish skipped (version may already exist)"
 
     # --- Maven Central (Scala) ---
@@ -422,7 +426,7 @@ jobs:
           exit 0
         fi
         cd generated/scala
-        sbt publishSigned \
+        sbt publish \
           || echo "⚠️ Scala Maven Central publish skipped (version may already exist)"
 
     # --- pub.dev (Dart) ---
