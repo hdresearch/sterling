@@ -407,10 +407,10 @@ jobs:
         gradle publishMavenPublicationToLocalRepository --no-daemon
         # Bundle and upload to Central Portal
         cd build/staging-deploy
-        jar -cf bundle.jar -C . .
+        zip -r bundle.zip .
         RESP=$(curl -s -w "\n%{http_code}" \
           -u "$MAVEN_USERNAME:$MAVEN_PASSWORD" \
-          -F "bundle=@bundle.jar" \
+          -F "bundle=@bundle.zip" \
           "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC")
         HTTP_CODE=$(echo "$RESP" | tail -1)
         BODY=$(echo "$RESP" | head -n -1)
@@ -442,10 +442,10 @@ jobs:
         sbt publishSigned
         # Bundle and upload to Central Portal
         cd target/staging-deploy
-        jar -cf bundle.jar -C . .
+        zip -r bundle.zip .
         RESP=$(curl -s -w "\n%{http_code}" \
           -u "$MAVEN_USERNAME:$MAVEN_PASSWORD" \
-          -F "bundle=@bundle.jar" \
+          -F "bundle=@bundle.zip" \
           "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC")
         HTTP_CODE=$(echo "$RESP" | tail -1)
         BODY=$(echo "$RESP" | head -n -1)
