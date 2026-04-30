@@ -6,7 +6,6 @@ plugins {
     kotlin("plugin.serialization") version "1.9.24"
     `maven-publish`
     signing
-    id("io.github.gradle-nexus.publish-plugin") version "2.0.0"
 }
 
 group = "sh.vers"
@@ -71,14 +70,10 @@ publishing {
             }
         }
     }
-}
-
-nexusPublishing {
     repositories {
-        sonatype {
-            nexusUrl.set(uri("https://central.sonatype.com/"))
-            username.set(System.getenv("MAVEN_USERNAME") ?: "")
-            password.set(System.getenv("MAVEN_PASSWORD") ?: "")
+        maven {
+            name = "local"
+            url = uri(layout.buildDirectory.dir("staging-deploy"))
         }
     }
 }

@@ -404,8 +404,21 @@ jobs:
           exit 0
         fi
         cd generated/kotlin
-        gradle publishToSonatype closeAndReleaseSonatypeStagingRepository --no-daemon \
-          || echo "⚠️ Kotlin Maven Central publish skipped (version may already exist)"
+        gradle publishMavenPublicationToLocalRepository --no-daemon
+        # Bundle and upload to Central Portal
+        cd build/staging-deploy
+        jar -cf bundle.jar -C . .
+        RESP=$(curl -s -w "\n%{http_code}" \
+          -u "$MAVEN_USERNAME:$MAVEN_PASSWORD" \
+          -F "bundle=@bundle.jar" \
+          "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC")
+        HTTP_CODE=$(echo "$RESP" | tail -1)
+        BODY=$(echo "$RESP" | head -n -1)
+        if [ "$HTTP_CODE" = "201" ]; then
+          echo "✅ Kotlin uploaded to Central Portal (deployment: $BODY)"
+        else
+          echo "⚠️ Kotlin upload returned $HTTP_CODE: $BODY"
+        fi
 
     # --- Maven Central (Scala) ---
     - name: Setup sbt
@@ -426,8 +439,21 @@ jobs:
           exit 0
         fi
         cd generated/scala
-        sbt publishSigned \
-          || echo "⚠️ Scala Maven Central publish skipped (version may already exist)"
+        sbt publishSigned
+        # Bundle and upload to Central Portal
+        cd target/staging-deploy
+        jar -cf bundle.jar -C . .
+        RESP=$(curl -s -w "\n%{http_code}" \
+          -u "$MAVEN_USERNAME:$MAVEN_PASSWORD" \
+          -F "bundle=@/tmp/scala-bundle.jar" \
+          "https://central.sonatype.com/api/v1/publisher/upload?publishingType=AUTOMATIC")
+        HTTP_CODE=$(echo "$RESP" | tail -1)
+        BODY=$(echo "$RESP" | head -n -1)
+        if [ "$HTTP_CODE" = "201" ]; then
+          echo "✅ Scala uploaded to Central Portal (deployment: $BODY)"
+        else
+          echo "⚠️ Scala upload returned $HTTP_CODE: $BODY"
+        fi
 
     # --- pub.dev (Dart) — tag-based, GitHub automated publishing ---
     - name: Tag Dart package
