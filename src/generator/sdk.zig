@@ -945,15 +945,15 @@ pub const SDKGenerator = struct {
                         try vpc.putString("ruby_type", self.resolveTypeRuby(vprop));
                         try vpc.putString("php_type", self.resolveTypePhp(vprop));
                         try vpc.putString("csharp_type", self.resolveTypeCsharp(vprop));
+                        try vpc.putString("dart_type", self.resolveTypeDart(vprop));
+                        try vpc.putString("scala_type", self.resolveTypeScala(vprop));
+                        try vpc.putString("swift_type", self.resolveTypeSwift(vprop));
                         // Rust-safe field name (avoid keyword 'ref')
                         if (std.mem.eql(u8, vprop.name, "ref")) {
                             try vpc.putString("rust_name", "ref_field");
                             try vpc.putBool("is_renamed", true);
                         } else {
                             try vpc.putString("rust_name", vprop.name);
-                        try vpc.putString("dart_type", self.resolveTypeDart(vprop));
-                        try vpc.putString("scala_type", self.resolveTypeScala(vprop));
-                        try vpc.putString("swift_type", self.resolveTypeSwift(vprop));
                             try vpc.putBool("is_renamed", false);
                         }
                         vprop_ctxs[vpi] = vpc;
@@ -1281,7 +1281,7 @@ pub const SDKGenerator = struct {
 
     fn resolveTypeDart(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
         if (prop.ref) |ref| return ref;
-        const t = prop.type_name orelse return "dynamic";
+        const t = prop.type_name orelse return "Object";
         if (std.mem.eql(u8, t, "string")) return "String";
         if (std.mem.eql(u8, t, "integer")) return "int";
         if (std.mem.eql(u8, t, "number")) return "double";
@@ -1883,6 +1883,8 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/dart/index.dart.template", d, "lib/index.dart", ctx);
         try self.renderTo("templates/dart/pubspec.yaml.template", d, "pubspec.yaml", ctx);
         try self.renderTo("templates/dart/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/dart/LICENSE.template", d, "LICENSE", ctx);
+        try self.renderTo("templates/dart/CHANGELOG.md.template", d, "CHANGELOG.md", ctx);
         std.debug.print("Generated Dart SDK at {s}\n", .{d});
     }
 

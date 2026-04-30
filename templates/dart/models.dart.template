@@ -6,7 +6,7 @@
 /// {{description}}
 enum {{name}} {
 {{#each enum_values}}
-  {{value}}{{#unless is_last}},{{/unless}};
+  {{value}}{{#if is_last}};{{else}},{{/if}}
 {{/each}}
 
   static {{name}}? fromString(String value) {
