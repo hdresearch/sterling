@@ -1328,7 +1328,7 @@ pub const SDKGenerator = struct {
 
     fn resolveTypeSwift(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
         if (prop.ref) |ref| return ref;
-        const t = prop.type_name orelse return "Any";
+        const t = prop.type_name orelse return "String";
         if (std.mem.eql(u8, t, "string")) return "String";
         if (std.mem.eql(u8, t, "integer")) {
             if (prop.format) |f| {
@@ -1339,17 +1339,17 @@ pub const SDKGenerator = struct {
         if (std.mem.eql(u8, t, "number")) return "Double";
         if (std.mem.eql(u8, t, "boolean")) return "Bool";
         if (std.mem.eql(u8, t, "array")) {
-            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "[{s}]", .{ir}) catch return "[Any]";
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "[{s}]", .{ir}) catch return "[String]";
             if (prop.items_type) |it| {
                 if (std.mem.eql(u8, it, "string")) return "[String]";
                 if (std.mem.eql(u8, it, "integer")) return "[Int]";
                 if (std.mem.eql(u8, it, "number")) return "[Double]";
                 if (std.mem.eql(u8, it, "boolean")) return "[Bool]";
             }
-            return "[Any]";
+            return "[String]";
         }
-        if (std.mem.eql(u8, t, "object")) return "[String: Any]";
-        return "Any";
+        if (std.mem.eql(u8, t, "object")) return "[String: String]";
+        return "String";
     }
 
     // ── Query param types for new languages ─────────────────────────────
