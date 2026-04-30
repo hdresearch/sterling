@@ -12,12 +12,9 @@ ThisBuild / scmInfo := Some(
 )
 
 ThisBuild / pomIncludeRepository := { _ => false }
-ThisBuild / publishTo := {
-  val central = "https://central.sonatype.com/repository/maven-central/"
-  if (isSnapshot.value) Some("snapshots" at central)
-  else Some("releases" at central)
-}
 ThisBuild / publishMavenStyle := true
+ThisBuild / sonatypeCredentialHost := "central.sonatype.com"
+ThisBuild / sonatypeRepository := "https://central.sonatype.com/api/v1/publisher/"
 ThisBuild / credentials += Credentials(
   "Sonatype Nexus Repository Manager",
   "central.sonatype.com",

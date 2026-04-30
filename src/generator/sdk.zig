@@ -1974,6 +1974,9 @@ pub const SDKGenerator = struct {
         const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/scala/sh/vers/sdk", .{d});
         defer self.allocator.free(src);
         self.makeDirRecursive(src) catch {};
+        const project_dir = try std.fmt.allocPrint(self.allocator, "{s}/project", .{d});
+        defer self.allocator.free(project_dir);
+        self.makeDirRecursive(project_dir) catch {};
 
         const ctx = try self.buildBaseContext();
         const ops = try self.buildOperationContexts(ctx);
@@ -1985,6 +1988,8 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/scala/Models.scala.template", d, "src/main/scala/sh/vers/sdk/Models.scala", ctx);
         try self.renderTo("templates/scala/Errors.scala.template", d, "src/main/scala/sh/vers/sdk/Errors.scala", ctx);
         try self.renderTo("templates/scala/build.sbt.template", d, "build.sbt", ctx);
+        try self.renderTo("templates/scala/project/plugins.sbt.template", d, "project/plugins.sbt", ctx);
+        try self.renderTo("templates/scala/project/build.properties.template", d, "project/build.properties", ctx);
         try self.renderTo("templates/scala/README.md.template", d, "README.md", ctx);
         std.debug.print("Generated Scala SDK at {s}\n", .{d});
     }
