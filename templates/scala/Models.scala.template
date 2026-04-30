@@ -22,7 +22,7 @@ object {{name}} {
   */
 case class {{name}}(
 {{#each union_properties}}
-  {{name}}: Option[{{scala_type}}] = None{{#unless is_last}},{{/unless}}
+  {{scala_name}}: Option[{{scala_type}}] = None{{#unless is_last}},{{/unless}}
 {{/each}}
 ) derives ReadWriter
 
@@ -35,9 +35,9 @@ case class {{name}}(
   /** {{description}} */
 {{/if}}
 {{#if required}}
-  {{name}}: {{scala_type}}{{#unless is_last}},{{/unless}}
+  {{scala_name}}: {{scala_type}}{{#unless is_last}},{{/unless}}
 {{else}}
-  {{name}}: Option[{{scala_type}}] = None{{#unless is_last}},{{/unless}}
+  {{scala_name}}: Option[{{scala_type}}] = None{{#unless is_last}},{{/unless}}
 {{/if}}
 {{/each}}
 ) derives ReadWriter

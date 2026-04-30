@@ -680,6 +680,23 @@ pub const SDKGenerator = struct {
 
     // ── Query param type helpers ─────────────────────────────────────────
 
+    fn scalaSafeName(self: *SDKGenerator, name: []const u8) ![]const u8 {
+        const scala_keywords = [_][]const u8{
+            "abstract", "case", "catch", "class", "def", "do", "else",
+            "extends", "false", "final", "finally", "for", "forSome", "if",
+            "implicit", "import", "lazy", "match", "new", "null", "object",
+            "override", "package", "private", "protected", "return", "sealed",
+            "super", "this", "throw", "trait", "true", "try", "type", "val",
+            "var", "while", "with", "yield",
+        };
+        for (scala_keywords) |kw| {
+            if (std.mem.eql(u8, name, kw)) {
+                return try std.fmt.allocPrint(self.allocator, "`{s}`", .{name});
+            }
+        }
+        return name;
+    }
+
     fn rustSafeName(self: *SDKGenerator, name: []const u8) ![]const u8 {
         const rust_keywords = [_][]const u8{
             "as", "break", "const", "continue", "crate", "else", "enum",
@@ -942,6 +959,7 @@ pub const SDKGenerator = struct {
                         vpc.* = template.Context.init(self.allocator);
                         vpc.parent = vc;
                         try vpc.putString("name", vprop.name);
+                        try vpc.putString("scala_name", try self.scalaSafeName(vprop.name));
                         var vp_pascal_buf: [256]u8 = undefined;
                         try vpc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(vprop.name, &vp_pascal_buf)));
                         try vpc.putBool("required", vprop.required);
@@ -986,6 +1004,7 @@ pub const SDKGenerator = struct {
                             vpc.* = template.Context.init(self.allocator);
                             vpc.parent = m;
                             try vpc.putString("name", vprop.name);
+                            try vpc.putString("scala_name", try self.scalaSafeName(vprop.name));
                             var up_pascal_buf: [256]u8 = undefined;
                             try vpc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(vprop.name, &up_pascal_buf)));
                             try vpc.putBool("required", false); // union fields are always optional
@@ -1034,6 +1053,8 @@ pub const SDKGenerator = struct {
                     try pc.putString("name", prop.name);
                     // Rust-safe name (prefix with r# if keyword)
                     try pc.putString("rust_name", try self.rustSafeName(prop.name));
+                    // Scala-safe name (backtick reserved words)
+                    try pc.putString("scala_name", try self.scalaSafeName(prop.name));
                     var prop_pascal_buf: [256]u8 = undefined;
                     const prop_pascal = try self.allocator.dupe(u8, toPascalCaseStatic(prop.name, &prop_pascal_buf));
                     try pc.putString("pascal_name", prop_pascal);
