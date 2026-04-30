@@ -39,7 +39,7 @@ namespace VersSdk
         /// <summary>{{description}}</summary>
 {{/if}}
         [JsonPropertyName("{{name}}")]
-        public {{csharp_type}}{{#unless required}}?{{/unless}} {{pascal_name}} { get; set; }
+        public {{csharp_type}}{{#unless required}}?{{/unless}} {{pascal_name}} { get; set; }{{#if required}} = default!;{{/if}}
 {{/each}}
 {{#if has_nested_types}}
 
