@@ -20,10 +20,8 @@ object {{name}} {
   * This is a union type — exactly one field should be set.
   */
 case class {{name}}(
-{{#each variants}}
-{{#each properties}}
+{{#each union_properties}}
   {{name}}: Option[{{scala_type}}] = None{{#unless is_last}},{{/unless}}
-{{/each}}
 {{/each}}
 ) derives ReadWriter
 

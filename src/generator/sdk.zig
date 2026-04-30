@@ -973,6 +973,48 @@ pub const SDKGenerator = struct {
                     variant_ctxs[vi] = vc;
                 }
                 try m.putList("variants", @ptrCast(variant_ctxs));
+
+                // Build deduplicated union_properties (for languages that flatten variants into one class)
+                var seen_props = std.StringHashMap(*template.Context).init(self.allocator);
+                defer seen_props.deinit();
+                var dedup_list: std.ArrayList(*template.Context) = .{};
+                for (schema.one_of_variants.items) |variant| {
+                    for (variant.properties.items) |vprop| {
+                        if (!seen_props.contains(vprop.name)) {
+                            const vpc = try self.allocator.create(template.Context);
+                            vpc.* = template.Context.init(self.allocator);
+                            vpc.parent = m;
+                            try vpc.putString("name", vprop.name);
+                            var up_pascal_buf: [256]u8 = undefined;
+                            try vpc.putString("pascal_name", try self.allocator.dupe(u8, toPascalCaseStatic(vprop.name, &up_pascal_buf)));
+                            try vpc.putBool("required", false); // union fields are always optional
+                            try vpc.putString("description", self.sanitiseOneLine(vprop.description orelse ""));
+                            try vpc.putString("ts_type", self.resolveTypeTS(vprop));
+                            try vpc.putString("rust_type", self.resolveTypeRust(vprop));
+                            try vpc.putString("py_type", self.resolveTypePython(vprop));
+                            try vpc.putString("go_type", self.resolveTypeGo(vprop));
+                            try vpc.putString("java_type", self.resolveTypeJava(vprop));
+                            try vpc.putString("kotlin_type", self.resolveTypeKotlin(vprop));
+                            try vpc.putString("ruby_type", self.resolveTypeRuby(vprop));
+                            try vpc.putString("php_type", self.resolveTypePhp(vprop));
+                            try vpc.putString("csharp_type", self.resolveTypeCsharp(vprop));
+                            try vpc.putString("dart_type", self.resolveTypeDart(vprop));
+                            try vpc.putString("scala_type", self.resolveTypeScala(vprop));
+                            try vpc.putString("swift_type", self.resolveTypeSwift(vprop));
+                            if (std.mem.eql(u8, vprop.name, "ref")) {
+                                try vpc.putString("rust_name", "ref_field");
+                                try vpc.putBool("is_renamed", true);
+                            } else {
+                                try vpc.putString("rust_name", vprop.name);
+                                try vpc.putBool("is_renamed", false);
+                            }
+                            try seen_props.put(vprop.name, vpc);
+                            try dedup_list.append(self.allocator, vpc);
+                        }
+                    }
+                }
+                const union_props = try dedup_list.toOwnedSlice(self.allocator);
+                try m.putList("union_properties", @ptrCast(union_props));
             }
 
             // Properties (for struct types)

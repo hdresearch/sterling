@@ -20,16 +20,15 @@ namespace VersSdk
 
 {{else}}
 {{#if is_union}}
-{{#each variants}}
-    public class {{name}}{{variant_pascal}}Variant
+    /// <summary>{{description}} (union type — exactly one field should be set)</summary>
+    public class {{name}}
     {
-{{#each properties}}
+{{#each union_properties}}
         [JsonPropertyName("{{name}}")]
         public {{csharp_type}}? {{pascal_name}} { get; set; }
 {{/each}}
     }
 
-{{/each}}
 {{else}}
 {{#if has_properties}}
     /// <summary>{{description}}</summary>

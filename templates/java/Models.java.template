@@ -50,15 +50,13 @@ public final class Models {
      * This is a union type — exactly one field should be set.
      */
     public static class {{name}} {
-{{#each variants}}
-{{#each properties}}
+{{#each union_properties}}
         @JsonProperty("{{name}}")
         private {{java_type}} {{name}};
 
         public {{java_type}} get{{pascal_name}}() { return {{name}}; }
         public void set{{pascal_name}}({{java_type}} {{name}}) { this.{{name}} = {{name}}; }
 
-{{/each}}
 {{/each}}
     }
 

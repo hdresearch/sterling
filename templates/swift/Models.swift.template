@@ -17,10 +17,8 @@ public enum {{name}}: String, Codable, CaseIterable {
 /// {{description}}
 /// This is a union type — exactly one field should be set.
 public struct {{name}}: Codable {
-{{#each variants}}
-{{#each properties}}
+{{#each union_properties}}
     public var {{name}}: {{swift_type}}?
-{{/each}}
 {{/each}}
 }
 

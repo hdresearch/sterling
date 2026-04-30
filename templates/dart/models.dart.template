@@ -23,36 +23,28 @@ enum {{name}} {
 /// {{description}}
 /// This is a union type — exactly one field should be set.
 class {{name}} {
-{{#each variants}}
-{{#each properties}}
+{{#each union_properties}}
   final {{dart_type}}? {{name}};
-{{/each}}
 {{/each}}
 
   const {{name}}({
-{{#each variants}}
-{{#each properties}}
+{{#each union_properties}}
     this.{{name}},
-{{/each}}
 {{/each}}
   });
 
   factory {{name}}.fromJson(Map<String, dynamic> json) {
     return {{name}}(
-{{#each variants}}
-{{#each properties}}
+{{#each union_properties}}
       {{name}}: json['{{name}}'],
-{{/each}}
 {{/each}}
     );
   }
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{};
-{{#each variants}}
-{{#each properties}}
+{{#each union_properties}}
     if ({{name}} != null) map['{{name}}'] = {{name}};
-{{/each}}
 {{/each}}
     return map;
   }
