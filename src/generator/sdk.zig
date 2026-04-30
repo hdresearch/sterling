@@ -1261,7 +1261,7 @@ pub const SDKGenerator = struct {
 
     fn resolveTypeKotlin(self: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {
         if (prop.ref) |ref| return ref;
-        const t = prop.type_name orelse return "Any";
+        const t = prop.type_name orelse return "kotlinx.serialization.json.JsonElement";
         if (std.mem.eql(u8, t, "string")) return "String";
         if (std.mem.eql(u8, t, "integer")) {
             if (prop.format) |f| {
@@ -1272,17 +1272,17 @@ pub const SDKGenerator = struct {
         if (std.mem.eql(u8, t, "number")) return "Double";
         if (std.mem.eql(u8, t, "boolean")) return "Boolean";
         if (std.mem.eql(u8, t, "array")) {
-            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "List<{s}>", .{ir}) catch return "List<Any>";
+            if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "List<{s}>", .{ir}) catch return "List<kotlinx.serialization.json.JsonElement>";
             if (prop.items_type) |it| {
                 if (std.mem.eql(u8, it, "string")) return "List<String>";
                 if (std.mem.eql(u8, it, "integer")) return "List<Long>";
                 if (std.mem.eql(u8, it, "number")) return "List<Double>";
                 if (std.mem.eql(u8, it, "boolean")) return "List<Boolean>";
             }
-            return "List<Any>";
+            return "List<kotlinx.serialization.json.JsonElement>";
         }
-        if (std.mem.eql(u8, t, "object")) return "Map<String, Any>";
-        return "Any";
+        if (std.mem.eql(u8, t, "object")) return "Map<String, kotlinx.serialization.json.JsonElement>";
+        return "kotlinx.serialization.json.JsonElement";
     }
 
     fn resolveTypeRuby(_: *SDKGenerator, prop: parser.SchemaProperty) []const u8 {

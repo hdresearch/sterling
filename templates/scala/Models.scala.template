@@ -8,9 +8,10 @@ import upickle.default._
 {{#each models}}
 {{#if is_enum}}
 /** {{description}} */
+type {{name}} = String
 object {{name}} {
 {{#each enum_values}}
-  val {{upper_value}}: String = "{{value}}"
+  val {{upper_value}}: {{name}} = "{{value}}"
 {{/each}}
 }
 
