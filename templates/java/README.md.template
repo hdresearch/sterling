@@ -10,7 +10,7 @@ It is generated with [Sterling](https://github.com/hdresearch/sterling).
 
 ```xml
 <dependency>
-    <groupId>com.vers</groupId>
+    <groupId>sh.vers</groupId>
     <artifactId>vers-sdk</artifactId>
     <version>{{project_version}}</version>
 </dependency>
@@ -19,13 +19,13 @@ It is generated with [Sterling](https://github.com/hdresearch/sterling).
 ### Gradle
 
 ```groovy
-implementation 'com.vers:vers-sdk:{{project_version}}'
+implementation 'sh.vers:vers-sdk:{{project_version}}'
 ```
 
 ## Usage
 
 ```java
-import com.vers.sdk.VersClient;
+import sh.vers.sdk.VersClient;
 
 public class Example {
     public static void main(String[] args) throws Exception {
@@ -50,7 +50,7 @@ public class Example {
 ## Configuration
 
 ```java
-import com.vers.sdk.VersClient;
+import sh.vers.sdk.VersClient;
 import java.time.Duration;
 
 VersClient client = new VersClient(
@@ -65,7 +65,7 @@ VersClient client = new VersClient(
 ## Error handling
 
 ```java
-import com.vers.sdk.Errors.*;
+import sh.vers.sdk.Errors.*;
 
 try {
     client.deleteVm("nonexistent-id", null);
@@ -84,7 +84,7 @@ with exponential backoff and jitter. The client respects `Retry-After` headers (
 ## Per-request options
 
 ```java
-import com.vers.sdk.RequestOptions;
+import sh.vers.sdk.RequestOptions;
 import java.time.Duration;
 
 RequestOptions options = new RequestOptions()

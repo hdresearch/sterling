@@ -5,9 +5,10 @@ plugins {
     kotlin("jvm") version "1.9.24"
     kotlin("plugin.serialization") version "1.9.24"
     `maven-publish`
+    signing
 }
 
-group = "com.vers.sdk"
+group = "sh.vers.sdk"
 version = "{{project_version}}"
 
 repositories {
@@ -31,13 +32,61 @@ kotlin {
     jvmToolchain(17)
 }
 
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
-            groupId = "com.vers.sdk"
+            groupId = "sh.vers.sdk"
             artifactId = "{{package_name}}"
             version = "{{project_version}}"
+
+            pom {
+                name.set("{{spec_title}} Kotlin SDK")
+                description.set("Kotlin SDK for {{spec_title}}")
+                url.set("https://github.com/hdresearch/kotlin-sdk")
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://opensource.org/licenses/MIT")
+                    }
+                }
+                developers {
+                    developer {
+                        id.set("hdresearch")
+                        name.set("HDR")
+                        email.set("support@vers.sh")
+                    }
+                }
+                scm {
+                    connection.set("scm:git:git://github.com/hdresearch/kotlin-sdk.git")
+                    developerConnection.set("scm:git:ssh://github.com/hdresearch/kotlin-sdk.git")
+                    url.set("https://github.com/hdresearch/kotlin-sdk")
+                }
+            }
         }
     }
+    repositories {
+        maven {
+            name = "central"
+            url = uri("https://central.sonatype.com/repository/maven-central/")
+            credentials {
+                username = System.getenv("MAVEN_USERNAME") ?: ""
+                password = System.getenv("MAVEN_PASSWORD") ?: ""
+            }
+        }
+    }
+}
+
+signing {
+    useGpgCmd()
+    sign(publishing.publications["maven"])
+}
+
+tasks.withType<Sign>().configureEach {
+    onlyIf { System.getenv("MAVEN_GPG_KEY") != null }
 }

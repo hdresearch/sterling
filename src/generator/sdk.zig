@@ -1732,10 +1732,10 @@ pub const SDKGenerator = struct {
     fn generateJava(self: *SDKGenerator, target: config.Config.Target) !void {
         const d = target.output_dir;
         self.makeDirRecursive(d) catch {};
-        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/java/com/vers/sdk", .{d});
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/java/sh/vers/sdk", .{d});
         defer self.allocator.free(src);
         self.makeDirRecursive(src) catch {};
-        const test_dir = try std.fmt.allocPrint(self.allocator, "{s}/src/test/java/com/vers/sdk", .{d});
+        const test_dir = try std.fmt.allocPrint(self.allocator, "{s}/src/test/java/sh/vers/sdk", .{d});
         defer self.allocator.free(test_dir);
         self.makeDirRecursive(test_dir) catch {};
 
@@ -1745,23 +1745,23 @@ pub const SDKGenerator = struct {
         try ctx.putList("models", try self.buildModelContexts(ctx));
         try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
 
-        try self.renderTo("templates/java/Client.java.template", d, "src/main/java/com/vers/sdk/VersClient.java", ctx);
-        try self.renderTo("templates/java/Models.java.template", d, "src/main/java/com/vers/sdk/Models.java", ctx);
-        try self.renderTo("templates/java/Errors.java.template", d, "src/main/java/com/vers/sdk/Errors.java", ctx);
-        try self.renderTo("templates/java/RequestOptions.java.template", d, "src/main/java/com/vers/sdk/RequestOptions.java", ctx);
+        try self.renderTo("templates/java/Client.java.template", d, "src/main/java/sh/vers/sdk/VersClient.java", ctx);
+        try self.renderTo("templates/java/Models.java.template", d, "src/main/java/sh/vers/sdk/Models.java", ctx);
+        try self.renderTo("templates/java/Errors.java.template", d, "src/main/java/sh/vers/sdk/Errors.java", ctx);
+        try self.renderTo("templates/java/RequestOptions.java.template", d, "src/main/java/sh/vers/sdk/RequestOptions.java", ctx);
         try self.renderTo("templates/java/pom.xml.template", d, "pom.xml", ctx);
         try self.renderTo("templates/java/README.md.template", d, "README.md", ctx);
-        try self.renderTo("templates/java/ClientTest.java.template", d, "src/test/java/com/vers/sdk/VersClientTest.java", ctx);
+        try self.renderTo("templates/java/ClientTest.java.template", d, "src/test/java/sh/vers/sdk/VersClientTest.java", ctx);
         std.debug.print("Generated Java SDK at {s}\n", .{d});
     }
 
     fn generateKotlin(self: *SDKGenerator, target: config.Config.Target) !void {
         const d = target.output_dir;
         self.makeDirRecursive(d) catch {};
-        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/kotlin/com/vers/sdk", .{d});
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/kotlin/sh/vers/sdk", .{d});
         defer self.allocator.free(src);
         self.makeDirRecursive(src) catch {};
-        const test_dir = try std.fmt.allocPrint(self.allocator, "{s}/src/test/kotlin/com/vers/sdk", .{d});
+        const test_dir = try std.fmt.allocPrint(self.allocator, "{s}/src/test/kotlin/sh/vers/sdk", .{d});
         defer self.allocator.free(test_dir);
         self.makeDirRecursive(test_dir) catch {};
 
@@ -1771,13 +1771,13 @@ pub const SDKGenerator = struct {
         try ctx.putList("models", try self.buildModelContexts(ctx));
         try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
 
-        try self.renderTo("templates/kotlin/Client.kt.template", d, "src/main/kotlin/com/vers/sdk/VersClient.kt", ctx);
-        try self.renderTo("templates/kotlin/Models.kt.template", d, "src/main/kotlin/com/vers/sdk/Models.kt", ctx);
-        try self.renderTo("templates/kotlin/Errors.kt.template", d, "src/main/kotlin/com/vers/sdk/Errors.kt", ctx);
-        try self.renderTo("templates/kotlin/RequestOptions.kt.template", d, "src/main/kotlin/com/vers/sdk/RequestOptions.kt", ctx);
+        try self.renderTo("templates/kotlin/Client.kt.template", d, "src/main/kotlin/sh/vers/sdk/VersClient.kt", ctx);
+        try self.renderTo("templates/kotlin/Models.kt.template", d, "src/main/kotlin/sh/vers/sdk/Models.kt", ctx);
+        try self.renderTo("templates/kotlin/Errors.kt.template", d, "src/main/kotlin/sh/vers/sdk/Errors.kt", ctx);
+        try self.renderTo("templates/kotlin/RequestOptions.kt.template", d, "src/main/kotlin/sh/vers/sdk/RequestOptions.kt", ctx);
         try self.renderTo("templates/kotlin/build.gradle.kts.template", d, "build.gradle.kts", ctx);
         try self.renderTo("templates/kotlin/README.md.template", d, "README.md", ctx);
-        try self.renderTo("templates/kotlin/ClientTest.kt.template", d, "src/test/kotlin/com/vers/sdk/VersClientTest.kt", ctx);
+        try self.renderTo("templates/kotlin/ClientTest.kt.template", d, "src/test/kotlin/sh/vers/sdk/VersClientTest.kt", ctx);
         std.debug.print("Generated Kotlin SDK at {s}\n", .{d});
     }
 
@@ -1889,7 +1889,7 @@ pub const SDKGenerator = struct {
     fn generateScala(self: *SDKGenerator, target: config.Config.Target) !void {
         const d = target.output_dir;
         self.makeDirRecursive(d) catch {};
-        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/scala/com/vers/sdk", .{d});
+        const src = try std.fmt.allocPrint(self.allocator, "{s}/src/main/scala/sh/vers/sdk", .{d});
         defer self.allocator.free(src);
         self.makeDirRecursive(src) catch {};
 
@@ -1899,9 +1899,9 @@ pub const SDKGenerator = struct {
         try ctx.putList("models", try self.buildModelContexts(ctx));
         try ctx.putList("params_types", try self.buildParamsTypeContexts(ctx, ops));
 
-        try self.renderTo("templates/scala/Client.scala.template", d, "src/main/scala/com/vers/sdk/Client.scala", ctx);
-        try self.renderTo("templates/scala/Models.scala.template", d, "src/main/scala/com/vers/sdk/Models.scala", ctx);
-        try self.renderTo("templates/scala/Errors.scala.template", d, "src/main/scala/com/vers/sdk/Errors.scala", ctx);
+        try self.renderTo("templates/scala/Client.scala.template", d, "src/main/scala/sh/vers/sdk/Client.scala", ctx);
+        try self.renderTo("templates/scala/Models.scala.template", d, "src/main/scala/sh/vers/sdk/Models.scala", ctx);
+        try self.renderTo("templates/scala/Errors.scala.template", d, "src/main/scala/sh/vers/sdk/Errors.scala", ctx);
         try self.renderTo("templates/scala/build.sbt.template", d, "build.sbt", ctx);
         try self.renderTo("templates/scala/README.md.template", d, "README.md", ctx);
         std.debug.print("Generated Scala SDK at {s}\n", .{d});

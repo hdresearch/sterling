@@ -348,19 +348,117 @@ jobs:
           --skip-duplicate || echo "⚠️ NuGet publish skipped (version may already exist)"
 
     # --- Packagist (PHP) — automatic via GitHub webhook ---
-    # No publish step needed. Register hdresearch/php-sdk at packagist.org
-    # and enable auto-update webhook. `composer require vers/sdk` works after that.
+    # No publish step needed. hdresearch/php-sdk is registered at packagist.org
+    # and auto-updates on push. `composer require vers/vers-sdk` works.
 
-    # --- Maven Central (Java + Kotlin) ---
-    # Requires Sonatype OSSRH account + GPG signing.
-    # Deferred until domain verification is complete.
-    # Secrets needed: MAVEN_USERNAME, MAVEN_PASSWORD, MAVEN_GPG_KEY, MAVEN_GPG_PASSPHRASE
-    #
-    # When ready, add:
-    # - name: Publish Java to Maven Central
-    #   run: cd generated/java && mvn deploy -P release
-    # - name: Publish Kotlin to Maven Central
-    #   run: cd generated/kotlin && ./gradlew publish
+    # --- Maven Central (Java) ---
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+        server-id: central
+        server-username: MAVEN_USERNAME
+        server-password: MAVEN_PASSWORD
+        gpg-private-key: ${{ secrets.MAVEN_GPG_KEY }}
+        gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+    - name: Publish Java to Maven Central
+      if: success()
+      env:
+        MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+        MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+        MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      run: |
+        if [ -z "$MAVEN_USERNAME" ]; then
+          echo "⚠️ MAVEN_USERNAME not set, skipping Maven Central publish"
+          exit 0
+        fi
+        cd generated/java
+        mvn deploy -B --no-transfer-progress \
+          || echo "⚠️ Maven Central publish skipped (version may already exist)"
+
+    # --- Maven Central (Kotlin) ---
+    - name: Publish Kotlin to Maven Central
+      if: success()
+      env:
+        MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+        MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+        MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
+        MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      run: |
+        if [ -z "$MAVEN_USERNAME" ]; then
+          echo "⚠️ MAVEN_USERNAME not set, skipping Kotlin publish"
+          exit 0
+        fi
+        cd generated/kotlin
+        ./gradlew publish --no-daemon \
+          || echo "⚠️ Kotlin Maven Central publish skipped (version may already exist)"
+
+    # --- Maven Central (Scala) ---
+    - name: Setup sbt
+      if: success()
+      uses: sbt/setup-sbt@v1
+
+    - name: Publish Scala to Maven Central
+      if: success()
+      env:
+        MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+        MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+        PGP_SECRET: ${{ secrets.MAVEN_GPG_KEY }}
+        PGP_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      run: |
+        if [ -z "$MAVEN_USERNAME" ]; then
+          echo "⚠️ MAVEN_USERNAME not set, skipping Scala publish"
+          exit 0
+        fi
+        cd generated/scala
+        sbt publishSigned \
+          || echo "⚠️ Scala Maven Central publish skipped (version may already exist)"
+
+    # --- pub.dev (Dart) ---
+    - name: Setup Dart
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: stable
+
+    - name: Publish Dart to pub.dev
+      if: success()
+      env:
+        PUB_TOKEN: ${{ secrets.PUB_DEV_TOKEN }}
+      run: |
+        if [ -z "$PUB_TOKEN" ]; then
+          echo "⚠️ PUB_DEV_TOKEN not set, skipping pub.dev publish"
+          exit 0
+        fi
+        cd generated/dart
+        dart pub publish --force \
+          || echo "⚠️ pub.dev publish skipped (version may already exist)"
+
+    # --- SwiftPM (Swift) — tag-based, like Go ---
+    - name: Tag Swift package
+      if: success()
+      env:
+        GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
+      run: |
+        cd generated/swift
+        VERSION=$(grep '"version"' ../typescript/package.json | head -1 | sed 's/.*: "//;s/".*//')
+        TAG="${VERSION}"
+        git tag "$TAG" || true
+        git push origin "$TAG" 2>/dev/null || echo "⚠️ Swift tag ${TAG} already exists"
+        echo "Swift package: .package(url: \"https://github.com/hdresearch/swift-sdk.git\", from: \"${TAG}\")"
+
+    # --- Zig — tag-based ---
+    - name: Tag Zig package
+      if: success()
+      env:
+        GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
+      run: |
+        cd generated/zig
+        VERSION=$(grep '"version"' ../typescript/package.json | head -1 | sed 's/.*: "//;s/".*//')
+        TAG="v${VERSION}"
+        git tag "$TAG" || true
+        git push origin "$TAG" 2>/dev/null || echo "⚠️ Zig tag ${TAG} already exists"
 
     # ─── Documentation PR ───────────────────────────────────────────────
 

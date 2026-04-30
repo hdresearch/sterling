@@ -10,20 +10,20 @@ It is generated with [Sterling](https://github.com/hdresearch/sterling).
 
 ```kotlin
 dependencies {
-    implementation("com.vers.sdk:{{package_name}}:{{project_version}}")
+    implementation("sh.vers.sdk:{{package_name}}:{{project_version}}")
 }
 ```
 
 ### Gradle (Groovy)
 
 ```groovy
-implementation 'com.vers.sdk:{{package_name}}:{{project_version}}'
+implementation 'sh.vers.sdk:{{package_name}}:{{project_version}}'
 ```
 
 ## Usage
 
 ```kotlin
-import com.vers.sdk.{{class_name}}Client
+import sh.vers.sdk.{{class_name}}Client
 import kotlinx.coroutines.runBlocking
 
 fun main() = runBlocking {
@@ -50,7 +50,7 @@ fun main() = runBlocking {
 ## Error Handling
 
 ```kotlin
-import com.vers.sdk.*
+import sh.vers.sdk.*
 
 try {
     val response = client.someOperation()

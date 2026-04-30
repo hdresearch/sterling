@@ -1,6 +1,29 @@
 ThisBuild / version := "{{project_version}}"
 ThisBuild / scalaVersion := "3.4.2"
-ThisBuild / organization := "com.vers"
+ThisBuild / organization := "sh.vers"
+
+ThisBuild / homepage := Some(url("https://github.com/hdresearch/scala-sdk"))
+ThisBuild / licenses := List("MIT" -> url("https://opensource.org/licenses/MIT"))
+ThisBuild / developers := List(
+  Developer("hdresearch", "HDR", "support@vers.sh", url("https://vers.sh"))
+)
+ThisBuild / scmInfo := Some(
+  ScmInfo(url("https://github.com/hdresearch/scala-sdk"), "scm:git@github.com:hdresearch/scala-sdk.git")
+)
+
+ThisBuild / pomIncludeRepository := { _ => false }
+ThisBuild / publishTo := {
+  val central = "https://central.sonatype.com/repository/maven-central/"
+  if (isSnapshot.value) Some("snapshots" at central)
+  else Some("releases" at central)
+}
+ThisBuild / publishMavenStyle := true
+ThisBuild / credentials += Credentials(
+  "Sonatype Nexus Repository Manager",
+  "central.sonatype.com",
+  sys.env.getOrElse("MAVEN_USERNAME", ""),
+  sys.env.getOrElse("MAVEN_PASSWORD", "")
+)
 
 lazy val root = (project in file("."))
   .settings(
