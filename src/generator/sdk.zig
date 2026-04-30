@@ -1986,6 +1986,7 @@ pub const SDKGenerator = struct {
         try self.renderTo("templates/swift/Errors.swift.template", d, "Sources/Errors.swift", ctx);
         try self.renderTo("templates/swift/Package.swift.template", d, "Package.swift", ctx);
         try self.renderTo("templates/swift/README.md.template", d, "README.md", ctx);
+        try self.renderTo("templates/swift/.gitignore.template", d, ".gitignore", ctx);
         std.debug.print("Generated Swift SDK at {s}\n", .{d});
     }
 
