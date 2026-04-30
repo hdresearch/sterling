@@ -51,6 +51,11 @@ language = "csharp"
 repository = "hdresearch/csharp-sdk"
 output_dir = "./generated/csharp"
 
+[targets.zig]
+language = "zig"
+repository = "hdresearch/zig-sdk"
+output_dir = "./generated/zig"
+
 [targets.dart]
 language = "dart"
 repository = "hdresearch/dart-sdk"

@@ -2,15 +2,178 @@
 // {{spec_title}} v{{spec_version}}
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
-pub const Client = struct {
-    allocator: std.mem.Allocator,
-    base_url: []const u8,
+pub const ClientOptions = struct {
+    base_url: ?[]const u8 = null,
+    api_key: ?[]const u8 = null,
+    max_retries: u32 = 2,
+    timeout_ms: u64 = 30_000,
+};
 
-    pub fn init(allocator: std.mem.Allocator, base_url: []const u8) Client {
-        return .{
-            .allocator = allocator,
-            .base_url = base_url,
-        };
+pub const Response = struct {
+    status: std.http.Status,
+    body: []const u8,
+    allocator: Allocator,
+
+    pub fn deinit(self: *Response) void {
+        self.allocator.free(self.body);
+    }
+
+    pub fn json(self: *const Response) !std.json.Parsed(std.json.Value) {
+        return std.json.parseFromSlice(std.json.Value, self.allocator, self.body, .{ .allocate = .alloc_always });
     }
 };
+
+pub const RequestOptions = struct {
+    timeout_ms: ?u64 = null,
+};
+
+pub const ApiError = error{
+    BadRequest, Unauthorized, Forbidden, NotFound, Conflict,
+    UnprocessableEntity, RateLimited, InternalServerError,
+    ConnectionError, Unexpected,
+};
+
+fn statusToError(status: std.http.Status) ApiError!void {
+    return switch (@intFromEnum(status)) {
+        200...299 => {},
+        400 => ApiError.BadRequest,
+        401 => ApiError.Unauthorized,
+        403 => ApiError.Forbidden,
+        404 => ApiError.NotFound,
+        409 => ApiError.Conflict,
+        422 => ApiError.UnprocessableEntity,
+        429 => ApiError.RateLimited,
+        500...599 => ApiError.InternalServerError,
+        else => ApiError.Unexpected,
+    };
+}
+
+fn isRetryable(status: std.http.Status) bool {
+    const code = @intFromEnum(status);
+    return code >= 500 or code == 408 or code == 409 or code == 429;
+}
+
+pub const Client = struct {
+    allocator: Allocator,
+    base_url: []const u8,
+    api_key: ?[]const u8,
+    max_retries: u32,
+    timeout_ms: u64,
+
+    pub fn init(allocator: Allocator, options: ClientOptions) Client {
+        return .{
+            .allocator = allocator,
+            .base_url = options.base_url orelse std.posix.getenv("VERS_BASE_URL") orelse "{{base_url}}",
+            .api_key = options.api_key orelse std.posix.getenv("VERS_API_KEY"),
+            .max_retries = options.max_retries,
+            .timeout_ms = options.timeout_ms,
+        };
+    }
+
+    fn doRequest(self: *const Client, method: std.http.Method, path: []const u8, body_json: ?[]const u8, opts: ?RequestOptions) (ApiError || Allocator.Error || error{HttpRequestFailed})!Response {
+        _ = opts;
+        var last_status: std.http.Status = .internal_server_error;
+
+        for (0..self.max_retries + 1) |attempt| {
+            if (attempt > 0) {
+                const base_ms: u64 = 500 * std.math.shl(u64, 1, @intCast(attempt - 1));
+                std.time.sleep(base_ms * std.time.ns_per_ms);
+            }
+
+            const url_str = std.fmt.allocPrint(self.allocator, "{s}{s}", .{ self.base_url, path }) catch |e| return e;
+            defer self.allocator.free(url_str);
+            const uri = std.Uri.parse(url_str) catch return ApiError.ConnectionError;
+
+            var http_client = std.http.Client{ .allocator = self.allocator };
+            defer http_client.deinit();
+
+            const auth = if (self.api_key) |key|
+                std.fmt.allocPrint(self.allocator, "Bearer {s}", .{key}) catch |e| return e
+            else
+                null;
+            defer if (auth) |a| self.allocator.free(a);
+
+            var hdr_buf: [8192]u8 = undefined;
+            var req = http_client.open(method, uri, .{
+                .server_header_buffer = &hdr_buf,
+                .extra_headers = if (auth) |a|
+                    &.{ .{ .name = "authorization", .value = a }, .{ .name = "content-type", .value = "application/json" } }
+                else
+                    &.{ .{ .name = "content-type", .value = "application/json" } },
+            }) catch return ApiError.ConnectionError;
+            defer req.deinit();
+
+            if (body_json) |b| req.transfer_encoding = .{ .content_length = b.len };
+            req.send() catch return ApiError.ConnectionError;
+            if (body_json) |b| req.writer().writeAll(b) catch return ApiError.ConnectionError;
+            req.finish() catch return ApiError.ConnectionError;
+            req.wait() catch return ApiError.ConnectionError;
+
+            last_status = req.status;
+            if (isRetryable(req.status) and attempt < self.max_retries) continue;
+            try statusToError(req.status);
+
+            var resp_body = std.ArrayList(u8).init(self.allocator);
+            errdefer resp_body.deinit();
+            var buf: [4096]u8 = undefined;
+            while (true) {
+                const n = req.reader().read(&buf) catch return ApiError.ConnectionError;
+                if (n == 0) break;
+                resp_body.appendSlice(buf[0..n]) catch |e| return e;
+            }
+            return Response{ .status = req.status, .body = resp_body.toOwnedSlice() catch |e| return e, .allocator = self.allocator };
+        }
+        try statusToError(last_status);
+        return ApiError.ConnectionError;
+    }
+
+{{#each operations}}
+    /// {{summary}}
+    pub fn {{snake_name}}(self: *const Client{{#if has_path_params}}, {{path_params_zig}}{{/if}}{{#if has_body}}, body: []const u8{{/if}}{{#if has_query_params}}, {{query_params_zig}}{{/if}}, opts: ?RequestOptions) !Response {
+{{#if has_path_params}}
+{{#if has_query_params}}
+        const base_path = try std.fmt.allocPrint(self.allocator, "{{path_interpolate_zig}}", .{ {{zig_format_args}} });
+        defer self.allocator.free(base_path);
+        var qbuf = std.ArrayList(u8).init(self.allocator);
+        defer qbuf.deinit();
+        try qbuf.appendSlice(base_path);
+        var sep: u8 = '?';
+{{#each query_params}}
+        if ({{name}}) |v| { try qbuf.append(sep); try qbuf.appendSlice("{{name}}="); try qbuf.appendSlice(try std.fmt.allocPrint(self.allocator, "{}", .{v})); sep = '&'; }
+{{/each}}
+        const path = try qbuf.toOwnedSlice();
+        defer self.allocator.free(path);
+        return self.doRequest(.{{method}}, path, {{#if has_body}}body{{else}}null{{/if}}, opts);
+{{else}}
+        const path = try std.fmt.allocPrint(self.allocator, "{{path_interpolate_zig}}", .{ {{zig_format_args}} });
+        defer self.allocator.free(path);
+        return self.doRequest(.{{method}}, path, {{#if has_body}}body{{else}}null{{/if}}, opts);
+{{/if}}
+{{else}}
+{{#if has_query_params}}
+        var qbuf = std.ArrayList(u8).init(self.allocator);
+        defer qbuf.deinit();
+        try qbuf.appendSlice("{{path}}");
+        var sep: u8 = '?';
+{{#each query_params}}
+        if ({{name}}) |v| { try qbuf.append(sep); try qbuf.appendSlice("{{name}}="); try qbuf.appendSlice(try std.fmt.allocPrint(self.allocator, "{}", .{v})); sep = '&'; }
+{{/each}}
+        const path = try qbuf.toOwnedSlice();
+        defer self.allocator.free(path);
+        return self.doRequest(.{{method}}, path, {{#if has_body}}body{{else}}null{{/if}}, opts);
+{{else}}
+        return self.doRequest(.{{method}}, "{{path}}", {{#if has_body}}body{{else}}null{{/if}}, opts);
+{{/if}}
+{{/if}}
+    }
+
+{{/each}}
+};
+
+test "client initializes with defaults" {
+    const client = Client.init(std.testing.allocator, .{});
+    try std.testing.expectEqualStrings("{{base_url}}", client.base_url);
+    try std.testing.expect(client.max_retries == 2);
+}

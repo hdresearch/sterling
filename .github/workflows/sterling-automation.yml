@@ -223,6 +223,20 @@ jobs:
         git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/swift-sdk.git
         git push -f origin HEAD:main
 
+    - name: Push Zig SDK
+      if: success()
+      env:
+        GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
+      run: |
+        cd generated/zig
+        git init
+        git config user.name "Sterling"
+        git config user.email "yev@hdr.is"
+        git add -A
+        git commit -m "Update Zig SDK from OpenAPI spec" || exit 0
+        git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/zig-sdk.git
+        git push -f origin HEAD:main
+
     # ─── Publish to package registries ──────────────────────────────────
 
     # --- npm (TypeScript) ---

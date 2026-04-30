@@ -187,6 +187,9 @@ pub const SDKGenerator = struct {
                             try c.putString("path_interpolate_scala", param_names.scala_interpolate);
                             try c.putString("path_params_swift", param_names.swift_params);
                             try c.putString("path_interpolate_swift", param_names.swift_interpolate);
+                            try c.putString("path_params_zig", param_names.zig_params);
+                            try c.putString("path_interpolate_zig", param_names.zig_interpolate);
+                            try c.putString("zig_format_args", param_names.zig_format_args);
                         }
 
                         // Body
@@ -267,6 +270,7 @@ pub const SDKGenerator = struct {
                                 try qc.putString("dart_type", self.queryParamTypeDart(schema_type));
                                 try qc.putString("scala_type", self.queryParamTypeScala(schema_type));
                                 try qc.putString("swift_type", self.queryParamTypeSwift(schema_type));
+                                try qc.putString("zig_type", self.queryParamTypeZig(schema_type));
                                 // Go format helper: how to convert to string for URL
                                 try qc.putString("go_format", self.queryParamGoFormat(param.name, schema_type));
                                 try query_params_list.append(qc);
@@ -288,6 +292,7 @@ pub const SDKGenerator = struct {
                             try c.putString("query_params_dart", try self.buildQueryParamStringDart(op));
                             try c.putString("query_params_scala", try self.buildQueryParamStringScala(op));
                             try c.putString("query_params_swift", try self.buildQueryParamStringSwift(op));
+                            try c.putString("query_params_zig", try self.buildQueryParamStringZig(op));
 
                             // Params type name for bundled query param interfaces
                             var pascal_buf2: [256]u8 = undefined;
@@ -343,6 +348,10 @@ pub const SDKGenerator = struct {
         scala_interpolate: []const u8,
         swift_params: []const u8,
         swift_interpolate: []const u8,
+        // Zig
+        zig_params: []const u8,
+        zig_interpolate: []const u8,
+        zig_format_args: []const u8,
     };
 
     fn extractPathParamNames(self: *SDKGenerator, path: []const u8) !PathParamInfo {
@@ -366,6 +375,9 @@ pub const SDKGenerator = struct {
         var dart_interp = std.array_list.Managed(u8).init(self.allocator);
         var scala_interp = std.array_list.Managed(u8).init(self.allocator);
         var swift_interp = std.array_list.Managed(u8).init(self.allocator);
+        var zig_params = std.array_list.Managed(u8).init(self.allocator);
+        var zig_interp = std.array_list.Managed(u8).init(self.allocator);
+        var zig_fmt_args = std.array_list.Managed(u8).init(self.allocator);
         var go_fmt_args = std.array_list.Managed(u8).init(self.allocator);
         var rust_fmt_args = std.array_list.Managed(u8).init(self.allocator);
         var php_fmt_args = std.array_list.Managed(u8).init(self.allocator);
@@ -391,6 +403,7 @@ pub const SDKGenerator = struct {
                     try dart_params.appendSlice(", ");
                     try scala_params.appendSlice(", ");
                     try swift_params.appendSlice(", ");
+                    try zig_params.appendSlice(", ");
                 }
                 // TS: name: string
                 try ts_params.appendSlice(name);
@@ -427,6 +440,9 @@ pub const SDKGenerator = struct {
                 // Swift: name: String
                 try swift_params.appendSlice(name);
                 try swift_params.appendSlice(": String");
+                // Zig: name: []const u8
+                try zig_params.appendSlice(name);
+                try zig_params.appendSlice(": []const u8");
 
                 // Interpolation patterns
                 try ts_interp.appendSlice("${");
@@ -461,16 +477,21 @@ pub const SDKGenerator = struct {
                 try swift_interp.appendSlice(name);
                 try swift_interp.append(')');
 
-                // Format arguments for Go, Rust, PHP
+                // Zig: use std.fmt.allocPrint with {s} placeholders
+                try zig_interp.appendSlice("{s}");
+
+                // Format arguments for Go, Rust, PHP, Zig
                 if (param_count > 0) {
                     try go_fmt_args.appendSlice(", ");
                     try rust_fmt_args.appendSlice(", ");
                     try php_fmt_args.appendSlice(", ");
+                    try zig_fmt_args.appendSlice(", ");
                 }
                 try go_fmt_args.appendSlice(name);
                 try rust_fmt_args.appendSlice(name);
                 try php_fmt_args.appendSlice("$");
                 try php_fmt_args.appendSlice(name);
+                try zig_fmt_args.appendSlice(name);
 
                 param_count += 1;
                 i = end + 1;
@@ -483,6 +504,7 @@ pub const SDKGenerator = struct {
                 try dart_interp.append(path[i]);
                 try scala_interp.append(path[i]);
                 try swift_interp.append(path[i]);
+                try zig_interp.append(path[i]);
                 i += 1;
             }
         }
@@ -511,6 +533,9 @@ pub const SDKGenerator = struct {
             .scala_interpolate = try scala_interp.toOwnedSlice(),
             .swift_params = try swift_params.toOwnedSlice(),
             .swift_interpolate = try swift_interp.toOwnedSlice(),
+            .zig_params = try zig_params.toOwnedSlice(),
+            .zig_interpolate = try zig_interp.toOwnedSlice(),
+            .zig_format_args = try zig_fmt_args.toOwnedSlice(),
         };
     }
 
@@ -1385,6 +1410,28 @@ pub const SDKGenerator = struct {
         return "String?";
     }
 
+    fn queryParamTypeZig(_: *SDKGenerator, schema_type: []const u8) []const u8 {
+        if (std.mem.eql(u8, schema_type, "boolean")) return "?bool";
+        if (std.mem.eql(u8, schema_type, "integer")) return "?u32";
+        if (std.mem.eql(u8, schema_type, "number")) return "?f64";
+        return "?[]const u8";
+    }
+
+    fn buildQueryParamStringZig(self: *SDKGenerator, op: parser.Operation) ![]const u8 {
+        var buf = std.array_list.Managed(u8).init(self.allocator);
+        var first = true;
+        for (op.parameters.items) |param| {
+            if (param.in == .query) {
+                if (!first) try buf.appendSlice(", ");
+                first = false;
+                try buf.appendSlice(param.name);
+                try buf.appendSlice(": ");
+                try buf.appendSlice(self.queryParamTypeZig(param.schema_type orelse "string"));
+            }
+        }
+        return try buf.toOwnedSlice();
+    }
+
     // ── Resource grouping for TypeScript ─────────────────────────────────
 
     fn pathToResourceName(_: *SDKGenerator, path_str: []const u8) []const u8 {
@@ -1666,6 +1713,15 @@ pub const SDKGenerator = struct {
 
         const ctx = try self.buildBaseContext();
         try ctx.putList("operations", try self.buildOperationContexts(ctx));
+
+        // Zig module names use underscores, not hyphens
+        const name = self.cfg.project.name;
+        const zig_name = try self.allocator.alloc(u8, name.len);
+        @memcpy(zig_name, name);
+        for (zig_name) |*c| {
+            if (c.* == '-') c.* = '_';
+        }
+        try ctx.putString("zig_module_name", zig_name);
 
         try self.renderTo("templates/zig/client.zig.template", d, "src/client.zig", ctx);
         try self.renderTo("templates/zig/build.zig.template", d, "build.zig", ctx);
