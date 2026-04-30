@@ -141,13 +141,13 @@ pub const Client = struct {
 {{#each query_params}}
         if ({{name}}) |v| { try qbuf.append(self.allocator, sep); try qbuf.appendSlice(self.allocator, "{{name}}="); const vs = try std.fmt.allocPrint(self.allocator, "{}", .{v}); defer self.allocator.free(vs); try qbuf.appendSlice(self.allocator, vs); sep = '&'; }
 {{/each}}
-        const path = try qbuf.toOwnedSlice(self.allocator);
-        defer self.allocator.free(path);
-        return self.doRequest(.{{method}}, path, {{#if has_body}}body{{else}}null{{/if}}, opts);
+        const final_path = try qbuf.toOwnedSlice(self.allocator);
+        defer self.allocator.free(final_path);
+        return self.doRequest(.{{method}}, final_path, {{#if has_body}}body{{else}}null{{/if}}, opts);
 {{else}}
-        const path = try std.fmt.allocPrint(self.allocator, "{{path_interpolate_zig}}", .{ {{zig_format_args}} });
-        defer self.allocator.free(path);
-        return self.doRequest(.{{method}}, path, {{#if has_body}}body{{else}}null{{/if}}, opts);
+        const final_path = try std.fmt.allocPrint(self.allocator, "{{path_interpolate_zig}}", .{ {{zig_format_args}} });
+        defer self.allocator.free(final_path);
+        return self.doRequest(.{{method}}, final_path, {{#if has_body}}body{{else}}null{{/if}}, opts);
 {{/if}}
 {{else}}
 {{#if has_query_params}}
@@ -158,9 +158,9 @@ pub const Client = struct {
 {{#each query_params}}
         if ({{name}}) |v| { try qbuf.append(self.allocator, sep); try qbuf.appendSlice(self.allocator, "{{name}}="); const vs = try std.fmt.allocPrint(self.allocator, "{}", .{v}); defer self.allocator.free(vs); try qbuf.appendSlice(self.allocator, vs); sep = '&'; }
 {{/each}}
-        const path = try qbuf.toOwnedSlice(self.allocator);
-        defer self.allocator.free(path);
-        return self.doRequest(.{{method}}, path, {{#if has_body}}body{{else}}null{{/if}}, opts);
+        const final_path = try qbuf.toOwnedSlice(self.allocator);
+        defer self.allocator.free(final_path);
+        return self.doRequest(.{{method}}, final_path, {{#if has_body}}body{{else}}null{{/if}}, opts);
 {{else}}
         return self.doRequest(.{{method}}, "{{path}}", {{#if has_body}}body{{else}}null{{/if}}, opts);
 {{/if}}
