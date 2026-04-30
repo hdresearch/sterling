@@ -8,7 +8,7 @@ plugins {
     signing
 }
 
-group = "sh.vers.sdk"
+group = "sh.vers"
 version = "{{project_version}}"
 
 repositories {
@@ -41,7 +41,7 @@ publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
-            groupId = "sh.vers.sdk"
+            groupId = "sh.vers"
             artifactId = "{{package_name}}"
             version = "{{project_version}}"
 
