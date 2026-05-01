@@ -9,6 +9,11 @@ generated/
 .env
 .env.*
 
+# Internal planning & platform config
+plan.md
+vers.toml
+.vers/
+
 # Do not embed other repos (but keep openapi specs)
 chelsea/*
 !chelsea/openapi/
