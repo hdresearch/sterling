@@ -112,6 +112,8 @@ pub const SchemaProperty = struct {
     /// For array items
     items_ref: ?[]const u8 = null,
     items_type: ?[]const u8 = null,
+    /// For object types with additionalProperties (maps/dicts)
+    additional_properties_type: ?[]const u8 = null,
     /// For inline nested object definitions (stored as slices to avoid comptime issues)
     nested_properties: []SchemaProperty = &.{},
     nested_required_fields: []const []const u8 = &.{},
@@ -559,7 +561,17 @@ fn parseSchema(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !Schema {
                                 if (ventry.value_ptr.* == .object) {
                                     const vpobj = ventry.value_ptr.object;
                                     if (vpobj.get("type")) |t| {
-                                        if (t == .string) vprop.type_name = try allocator.dupe(u8, t.string);
+                                        // Handle type arrays like ["string", "null"]
+                                        if (t == .string) {
+                                            vprop.type_name = try allocator.dupe(u8, t.string);
+                                        } else if (t == .array) {
+                                            for (t.array.items) |type_item| {
+                                                if (type_item == .string and !std.mem.eql(u8, type_item.string, "null")) {
+                                                    vprop.type_name = try allocator.dupe(u8, type_item.string);
+                                                    break;
+                                                }
+                                            }
+                                        }
                                     }
                                     if (vpobj.get("format")) |f| {
                                         if (f == .string) vprop.format = try allocator.dupe(u8, f.string);
@@ -601,7 +613,17 @@ fn parseSchema(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !Schema {
                 if (entry.value_ptr.* == .object) {
                     const pobj = entry.value_ptr.object;
                     if (pobj.get("type")) |t| {
-                        if (t == .string) prop.type_name = try allocator.dupe(u8, t.string);
+                        // Handle type arrays like ["integer", "null"] (nullable types)
+                        if (t == .string) {
+                            prop.type_name = try allocator.dupe(u8, t.string);
+                        } else if (t == .array) {
+                            for (t.array.items) |type_item| {
+                                if (type_item == .string and !std.mem.eql(u8, type_item.string, "null")) {
+                                    prop.type_name = try allocator.dupe(u8, type_item.string);
+                                    break;
+                                }
+                            }
+                        }
                     }
                     if (pobj.get("format")) |f| {
                         if (f == .string) prop.format = try allocator.dupe(u8, f.string);
@@ -611,6 +633,16 @@ fn parseSchema(allocator: std.mem.Allocator, obj: std.json.ObjectMap) !Schema {
                     }
                     if (pobj.get("$ref")) |r| {
                         if (r == .string) prop.ref = try allocator.dupe(u8, extractRefName(r.string));
+                    }
+                    // Map types: additionalProperties with a type (e.g. { type: "object", additionalProperties: { type: "string" } })
+                    if (pobj.get("additionalProperties")) |ap| {
+                        if (ap == .object) {
+                            if (ap.object.get("type")) |apt| {
+                                if (apt == .string) {
+                                    prop.additional_properties_type = try allocator.dupe(u8, apt.string);
+                                }
+                            }
+                        }
                     }
                     // Array items
                     if (pobj.get("items")) |items| {
