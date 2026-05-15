@@ -311,7 +311,7 @@ pub const SDKGenerator = struct {
                         }
 
                         // Rust fn_params
-                        try c.putString("fn_params", try self.buildRustFnParams(has_path_params, has_body, has_query_params, op));
+                        try c.putString("fn_params", try self.buildRustFnParams(has_path_params, has_body, has_query_params, op, path_str));
 
                         // Test call arguments for each language
                         try c.putString("test_args_ts", try self.buildTestArgsTS(path_str, has_body));
@@ -549,15 +549,34 @@ pub const SDKGenerator = struct {
         };
     }
 
-    fn buildRustFnParams(self: *SDKGenerator, has_path_params: bool, has_body: bool, has_query_params: bool, op: parser.Operation) ![]const u8 {
+    fn buildRustFnParams(self: *SDKGenerator, has_path_params: bool, has_body: bool, has_query_params: bool, op: parser.Operation, path_str: []const u8) ![]const u8 {
         var buf = std.array_list.Managed(u8).init(self.allocator);
         try buf.appendSlice("&self");
         if (has_path_params) {
+            // First try declared parameters
+            var found_path_param = false;
             for (op.parameters.items) |param| {
                 if (param.in == .path) {
                     try buf.appendSlice(", ");
                     try buf.appendSlice(param.name);
                     try buf.appendSlice(": &str");
+                    found_path_param = true;
+                }
+            }
+            // Fallback: infer path params from URL {placeholders} when not declared
+            if (!found_path_param) {
+                var i: usize = 0;
+                while (i < path_str.len) {
+                    if (path_str[i] == '{') {
+                        const end = std.mem.indexOfScalarPos(u8, path_str, i + 1, '}') orelse break;
+                        const name = path_str[i + 1 .. end];
+                        try buf.appendSlice(", ");
+                        try buf.appendSlice(name);
+                        try buf.appendSlice(": &str");
+                        i = end + 1;
+                    } else {
+                        i += 1;
+                    }
                 }
             }
         }
@@ -976,14 +995,10 @@ pub const SDKGenerator = struct {
                         try vpc.putString("dart_type", self.resolveTypeDart(vprop));
                         try vpc.putString("scala_type", self.resolveTypeScala(vprop));
                         try vpc.putString("swift_type", self.resolveTypeSwift(vprop));
-                        // Rust-safe field name (avoid keyword 'ref')
-                        if (std.mem.eql(u8, vprop.name, "ref")) {
-                            try vpc.putString("rust_name", "ref_field");
-                            try vpc.putBool("is_renamed", true);
-                        } else {
-                            try vpc.putString("rust_name", vprop.name);
-                            try vpc.putBool("is_renamed", false);
-                        }
+                        // Rust-safe field name (escape keywords like type, ref, match, etc.)
+                        const rust_safe = try self.rustSafeName(vprop.name);
+                        try vpc.putString("rust_name", rust_safe);
+                        try vpc.putBool("is_renamed", !std.mem.eql(u8, rust_safe, vprop.name));
                         try vpc.putBool("is_last", vpi == variant.properties.items.len - 1);
                         vprop_ctxs[vpi] = vpc;
                     }
@@ -1021,13 +1036,10 @@ pub const SDKGenerator = struct {
                             try vpc.putString("dart_type", self.resolveTypeDart(vprop));
                             try vpc.putString("scala_type", self.resolveTypeScala(vprop));
                             try vpc.putString("swift_type", self.resolveTypeSwift(vprop));
-                            if (std.mem.eql(u8, vprop.name, "ref")) {
-                                try vpc.putString("rust_name", "ref_field");
-                                try vpc.putBool("is_renamed", true);
-                            } else {
-                                try vpc.putString("rust_name", vprop.name);
-                                try vpc.putBool("is_renamed", false);
-                            }
+                            // Rust-safe field name (escape keywords like type, ref, match, etc.)
+                            const dedup_rust_safe = try self.rustSafeName(vprop.name);
+                            try vpc.putString("rust_name", dedup_rust_safe);
+                            try vpc.putBool("is_renamed", !std.mem.eql(u8, dedup_rust_safe, vprop.name));
                             try seen_props.put(vprop.name, vpc);
                             try dedup_list.append(self.allocator, vpc);
                         }
@@ -1172,7 +1184,14 @@ pub const SDKGenerator = struct {
             }
             return "unknown[]";
         }
-        if (std.mem.eql(u8, t, "object")) return "Record<string, unknown>";
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "Record<string, string>";
+                if (std.mem.eql(u8, vt, "integer") or std.mem.eql(u8, vt, "number")) return "Record<string, number>";
+                if (std.mem.eql(u8, vt, "boolean")) return "Record<string, boolean>";
+            }
+            return "Record<string, unknown>";
+        }
         return "unknown";
     }
 
@@ -1204,6 +1223,15 @@ pub const SDKGenerator = struct {
             }
             return "Vec<serde_json::Value>";
         }
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "std::collections::HashMap<String, String>";
+                if (std.mem.eql(u8, vt, "integer")) return "std::collections::HashMap<String, i64>";
+                if (std.mem.eql(u8, vt, "number")) return "std::collections::HashMap<String, f64>";
+                if (std.mem.eql(u8, vt, "boolean")) return "std::collections::HashMap<String, bool>";
+            }
+            return "serde_json::Value";
+        }
         return "serde_json::Value";
     }
 
@@ -1214,6 +1242,15 @@ pub const SDKGenerator = struct {
         if (std.mem.eql(u8, t, "integer")) return "int";
         if (std.mem.eql(u8, t, "number")) return "float";
         if (std.mem.eql(u8, t, "boolean")) return "bool";
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "dict[str, str]";
+                if (std.mem.eql(u8, vt, "integer")) return "dict[str, int]";
+                if (std.mem.eql(u8, vt, "number")) return "dict[str, float]";
+                if (std.mem.eql(u8, vt, "boolean")) return "dict[str, bool]";
+            }
+            return "dict";
+        }
         if (std.mem.eql(u8, t, "array")) {
             if (prop.items_ref) |ir| return std.fmt.allocPrint(self.allocator, "list[{s}]", .{ir}) catch return "list";
             if (prop.items_type) |it| {
@@ -1249,6 +1286,15 @@ pub const SDKGenerator = struct {
             }
             return "[]interface{}";
         }
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "map[string]string";
+                if (std.mem.eql(u8, vt, "integer")) return "map[string]int64";
+                if (std.mem.eql(u8, vt, "number")) return "map[string]float64";
+                if (std.mem.eql(u8, vt, "boolean")) return "map[string]bool";
+            }
+            return "map[string]interface{}";
+        }
         return "interface{}";
     }
 
@@ -1276,7 +1322,15 @@ pub const SDKGenerator = struct {
             }
             return "List<Object>";
         }
-        if (std.mem.eql(u8, t, "object")) return "Map<String, Object>";
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "Map<String, String>";
+                if (std.mem.eql(u8, vt, "integer")) return "Map<String, Long>";
+                if (std.mem.eql(u8, vt, "number")) return "Map<String, Double>";
+                if (std.mem.eql(u8, vt, "boolean")) return "Map<String, Boolean>";
+            }
+            return "Map<String, Object>";
+        }
         return "Object";
     }
 
@@ -1302,7 +1356,15 @@ pub const SDKGenerator = struct {
             }
             return "List<kotlinx.serialization.json.JsonElement>";
         }
-        if (std.mem.eql(u8, t, "object")) return "Map<String, kotlinx.serialization.json.JsonElement>";
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "Map<String, String>";
+                if (std.mem.eql(u8, vt, "integer")) return "Map<String, Long>";
+                if (std.mem.eql(u8, vt, "number")) return "Map<String, Double>";
+                if (std.mem.eql(u8, vt, "boolean")) return "Map<String, Boolean>";
+            }
+            return "Map<String, kotlinx.serialization.json.JsonElement>";
+        }
         return "kotlinx.serialization.json.JsonElement";
     }
 
@@ -1352,7 +1414,15 @@ pub const SDKGenerator = struct {
             }
             return "List<object>";
         }
-        if (std.mem.eql(u8, t, "object")) return "Dictionary<string, object>";
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "Dictionary<string, string>";
+                if (std.mem.eql(u8, vt, "integer")) return "Dictionary<string, long>";
+                if (std.mem.eql(u8, vt, "number")) return "Dictionary<string, double>";
+                if (std.mem.eql(u8, vt, "boolean")) return "Dictionary<string, bool>";
+            }
+            return "Dictionary<string, object>";
+        }
         return "object";
     }
 
@@ -1375,7 +1445,15 @@ pub const SDKGenerator = struct {
             }
             return "List<dynamic>";
         }
-        if (std.mem.eql(u8, t, "object")) return "Map<String, dynamic>";
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "Map<String, String>";
+                if (std.mem.eql(u8, vt, "integer")) return "Map<String, int>";
+                if (std.mem.eql(u8, vt, "number")) return "Map<String, double>";
+                if (std.mem.eql(u8, vt, "boolean")) return "Map<String, bool>";
+            }
+            return "Map<String, dynamic>";
+        }
         return "dynamic";
     }
 
@@ -1401,7 +1479,15 @@ pub const SDKGenerator = struct {
             }
             return "Seq[ujson.Value]";
         }
-        if (std.mem.eql(u8, t, "object")) return "Map[String, ujson.Value]";
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "Map[String, String]";
+                if (std.mem.eql(u8, vt, "integer")) return "Map[String, Long]";
+                if (std.mem.eql(u8, vt, "number")) return "Map[String, Double]";
+                if (std.mem.eql(u8, vt, "boolean")) return "Map[String, Boolean]";
+            }
+            return "Map[String, ujson.Value]";
+        }
         return "ujson.Value";
     }
 
@@ -1427,7 +1513,15 @@ pub const SDKGenerator = struct {
             }
             return "[String]";
         }
-        if (std.mem.eql(u8, t, "object")) return "[String: String]";
+        if (std.mem.eql(u8, t, "object")) {
+            if (prop.additional_properties_type) |vt| {
+                if (std.mem.eql(u8, vt, "string")) return "[String: String]";
+                if (std.mem.eql(u8, vt, "integer")) return "[String: Int]";
+                if (std.mem.eql(u8, vt, "number")) return "[String: Double]";
+                if (std.mem.eql(u8, vt, "boolean")) return "[String: Bool]";
+            }
+            return "[String: String]";
+        }
         return "String";
     }
 
