@@ -137,6 +137,111 @@ impl Client {
         None
     }
 
+    /// Internal request method with retry, timeout, header merging, and error handling.
+    async fn request<T: serde::de::DeserializeOwned>(
+        &self,
+        method: reqwest::Method,
+        url: &str,
+        body: Option<serde_json::Value>,
+        options: Option<&RequestOptions>,
+    ) -> Result<T, crate::errors::SDKError> {
+        if self.log_level >= LogLevel::Debug {
+            log::debug!("request: {} {}", method, url);
+        }
+        let effective_timeout = options.and_then(|o| o.timeout).unwrap_or(self.timeout);
+        let idempotency_key = {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let jitter = (rand_jitter() * 1_000_000_000.0) as u64;
+            format!("{:x}-{:x}", ts, jitter)
+        };
+        let is_mutating = matches!(method, reqwest::Method::POST | reqwest::Method::PUT | reqwest::Method::PATCH | reqwest::Method::DELETE);
+        let mut last_err: Option<reqwest::Error> = None;
+        let mut retry_after_used = false;
+        for attempt in 0..=self.max_retries {
+            if attempt > 0 && !retry_after_used {
+                if self.log_level >= LogLevel::Info {
+                    log::info!("retry attempt {}/{} for {} {}", attempt, self.max_retries, method, url);
+                }
+                tokio::time::sleep(Self::retry_delay(attempt - 1)).await;
+            }
+            retry_after_used = false;
+            let mut default_headers = HeaderMap::new();
+            default_headers.insert("user-agent", HeaderValue::from_str(&format!(
+                "{{package_name}}/{{project_version}} rust {}/{}",
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+            )).unwrap());
+            if let Some(ref token) = self.auth_header() {
+                default_headers.insert("authorization", HeaderValue::from_str(token).unwrap());
+            }
+            if is_mutating {
+                default_headers.insert("x-idempotency-key", HeaderValue::from_str(&idempotency_key).unwrap());
+            }
+            let client_overrides: Vec<(HeaderName, Option<HeaderValue>)> = self.headers.iter()
+                .map(|(k, v)| (k.clone(), Some(v.clone())))
+                .collect();
+            let merged = merge_headers(&default_headers, &client_overrides);
+            let mut req = self.http.request(method.clone(), url).timeout(effective_timeout).headers(merged);
+            if let Some(opts) = options {
+                if let Some(ref hdrs) = opts.headers {
+                    for (k, v) in hdrs {
+                        req = req.header(k.as_str(), v.as_str());
+                    }
+                }
+            }
+            if let Some(ref b) = body {
+                req = req.json(b);
+            }
+            match req.send().await {
+                Ok(resp) => {
+                    if self.log_level >= LogLevel::Debug {
+                        log::debug!("response: {} for {} {}", resp.status().as_u16(), method, url);
+                    }
+                    let status = resp.status().as_u16();
+                    if !Self::is_retryable_status(status) || attempt == self.max_retries {
+                        if status < 200 || status >= 300 {
+                            let headers: Vec<(String, String)> = resp.headers().iter()
+                                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+                                .collect();
+                            let body_text = resp.text().await.unwrap_or_default();
+                            if self.log_level >= LogLevel::Error {
+                                log::error!("API error: {} {} {}", status, method, url);
+                            }
+                            return Err(crate::errors::SDKError::API(
+                                crate::errors::APIError::from_response(status, headers, body_text)
+                            ));
+                        }
+                        let content_length = resp.content_length().unwrap_or(1);
+                        if content_length == 0 {
+                            return Ok(serde_json::from_str("{}").unwrap());
+                        }
+                        return resp.json().await.map_err(crate::errors::SDKError::from);
+                    }
+                    if let Some(ra_delay) = Self::parse_retry_after(&resp) {
+                        retry_after_used = true;
+                        if self.log_level >= LogLevel::Info {
+                            log::info!("retry attempt {}/{} for {} {} (retry-after: {:?})", attempt + 1, self.max_retries, method, url, ra_delay);
+                        }
+                        tokio::time::sleep(ra_delay).await;
+                    }
+                }
+                Err(e) => {
+                    if self.log_level >= LogLevel::Error {
+                        log::error!("connection error: {} {} - {}", method, url, e);
+                    }
+                    if attempt == self.max_retries {
+                        return Err(crate::errors::SDKError::from(e));
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(crate::errors::SDKError::from(last_err.unwrap()))
+    }
+
 {{#each operations}}
     /// {{summary}}
     pub async fn {{snake_name}}({{fn_params}}) -> Result<{{#if has_typed_response}}{{#if is_array_response}}Vec<{{response_type}}>{{else}}{{response_type}}{{/if}}{{else}}serde_json::Value{{/if}}, crate::errors::SDKError> {
@@ -159,104 +264,11 @@ impl Client {
             }
         }
 {{/if}}
-        if self.log_level >= LogLevel::Debug {
-            log::debug!("request: {{method}} {}", url);
-        }
-        let effective_timeout = options.and_then(|o| o.timeout).unwrap_or(self.timeout);
-        let idempotency_key = {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos();
-            let jitter = (rand_jitter() * 1_000_000_000.0) as u64;
-            format!("{:x}-{:x}", ts, jitter)
-        };
-        let is_mutating = matches!("{{method}}", "POST" | "PUT" | "PATCH" | "DELETE");
-        let mut last_err: Option<reqwest::Error> = None;
-        let mut retry_after_used = false;
-        for attempt in 0..=self.max_retries {
-            if attempt > 0 && !retry_after_used {
-                if self.log_level >= LogLevel::Info {
-                    log::info!("retry attempt {}/{} for {{method}} {}", attempt, self.max_retries, url);
-                }
-                tokio::time::sleep(Self::retry_delay(attempt - 1)).await;
-            }
-            retry_after_used = false;
-            let mut default_headers = HeaderMap::new();
-            default_headers.insert("user-agent", HeaderValue::from_str(&format!(
-                "{{package_name}}/{{project_version}} rust {}/{}",
-                std::env::consts::OS,
-                std::env::consts::ARCH,
-            )).unwrap());
-            if let Some(ref token) = self.auth_header() {
-                default_headers.insert("authorization", HeaderValue::from_str(token).unwrap());
-            }
-            if is_mutating {
-                default_headers.insert("x-idempotency-key", HeaderValue::from_str(&idempotency_key).unwrap());
-            }
-            // Merge default, client-level, and per-request headers
-            let client_overrides: Vec<(HeaderName, Option<HeaderValue>)> = self.headers.iter()
-                .map(|(k, v)| (k.clone(), Some(v.clone())))
-                .collect();
-            let merged = merge_headers(&default_headers, &client_overrides);
-            let mut req = self.http.{{method_lower}}(&url).timeout(effective_timeout).headers(merged);
-            if let Some(opts) = options {
-                if let Some(ref hdrs) = opts.headers {
-                    for (k, v) in hdrs {
-                        req = req.header(k.as_str(), v.as_str());
-                    }
-                }
-            }
 {{#if has_body}}
-            req = req.json(body);
+        self.request(reqwest::Method::{{method}}, &url, Some(serde_json::to_value(body).map_err(|e| crate::errors::SDKError::Serialization(e.to_string()))?), options).await
+{{else}}
+        self.request(reqwest::Method::{{method}}, &url, None, options).await
 {{/if}}
-            match req.send().await {
-                Ok(resp) => {
-                    if self.log_level >= LogLevel::Debug {
-                        log::debug!("response: {} for {{method}} {}", resp.status().as_u16(), url);
-                    }
-                    let status = resp.status().as_u16();
-                    if !Self::is_retryable_status(status) || attempt == self.max_retries {
-                        // Check for error responses before attempting to deserialize
-                        if status < 200 || status >= 300 {
-                            let headers: Vec<(String, String)> = resp.headers().iter()
-                                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-                                .collect();
-                            let body = resp.text().await.unwrap_or_default();
-                            if self.log_level >= LogLevel::Error {
-                                log::error!("API error: {} {{method}} {}", status, url);
-                            }
-                            return Err(crate::errors::SDKError::API(
-                                crate::errors::APIError::from_response(status, headers, body)
-                            ));
-                        }
-                        let content_length = resp.content_length().unwrap_or(1);
-                        if content_length == 0 {
-                            return Ok(serde_json::from_str("{}").unwrap());
-                        }
-                        return resp.json().await.map_err(crate::errors::SDKError::from);
-                    }
-                    if let Some(ra_delay) = Self::parse_retry_after(&resp) {
-                        retry_after_used = true;
-                        if self.log_level >= LogLevel::Info {
-                            log::info!("retry attempt {}/{} for {{method}} {} (retry-after: {:?})", attempt + 1, self.max_retries, url, ra_delay);
-                        }
-                        tokio::time::sleep(ra_delay).await;
-                    }
-                    // retryable status, continue loop
-                }
-                Err(e) => {
-                    if self.log_level >= LogLevel::Error {
-                        log::error!("connection error: {{method}} {} - {}", url, e);
-                    }
-                    if attempt == self.max_retries {
-                        return Err(crate::errors::SDKError::from(e));
-                    }
-                    last_err = Some(e);
-                }
-            }
-        }
-        Err(crate::errors::SDKError::from(last_err.unwrap()))
     }
 
 {{/each}}

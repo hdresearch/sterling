@@ -8,10 +8,6 @@ on:
   # Manual trigger
   workflow_dispatch:
 
-  # Daily check for spec changes
-  schedule:
-    - cron: '0 6 * * *'
-
 permissions:
   contents: read
   id-token: write  # needed for npm provenance + PyPI trusted publishing
@@ -33,21 +29,69 @@ jobs:
         token: ${{ secrets.SDK_PUSH_TOKEN }}
         sparse-checkout: openapi/
 
+    - name: Check for spec changes
+      id: spec-check
+      env:
+        GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
+      run: |
+        # Compute checksum of the new spec (canonical: sorted keys, no whitespace variance)
+        NEW_CHECKSUM=$(python3 -c "
+        import json, hashlib
+        with open('chelsea/openapi/orchestrator.openapi.json') as f:
+            spec = json.load(f)
+        canonical = json.dumps(spec, sort_keys=True, separators=(',', ':'))
+        print(hashlib.sha256(canonical.encode()).hexdigest())
+        ")
+        echo "new_checksum=$NEW_CHECKSUM" >> "$GITHUB_OUTPUT"
+
+        # Fetch the spec currently in vers-docs (what we last shipped)
+        OLD_CHECKSUM=""
+        if git clone --depth 1 --filter=blob:none --sparse \
+            https://x-access-token:${GITHUB_TOKEN}@github.com/hdresearch/vers-docs.git \
+            _vers-docs-check 2>/dev/null; then
+          cd _vers-docs-check
+          git sparse-checkout set api-reference
+          cd ..
+          if [ -f _vers-docs-check/api-reference/openapi.json ]; then
+            OLD_CHECKSUM=$(python3 -c "
+        import json, hashlib
+        with open('_vers-docs-check/api-reference/openapi.json') as f:
+            spec = json.load(f)
+        canonical = json.dumps(spec, sort_keys=True, separators=(',', ':'))
+        print(hashlib.sha256(canonical.encode()).hexdigest())
+        " 2>/dev/null || echo "")
+          fi
+          rm -rf _vers-docs-check
+        fi
+        echo "old_checksum=$OLD_CHECKSUM" >> "$GITHUB_OUTPUT"
+
+        if [ "$NEW_CHECKSUM" = "$OLD_CHECKSUM" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          echo "spec_changed=false" >> "$GITHUB_OUTPUT"
+          echo "✅ Spec unchanged (checksum: ${NEW_CHECKSUM:0:12}…) — skipping generation"
+        else
+          echo "spec_changed=true" >> "$GITHUB_OUTPUT"
+          echo "🔄 Spec changed (old: ${OLD_CHECKSUM:0:12}… → new: ${NEW_CHECKSUM:0:12}…) — regenerating"
+        fi
+
     - name: Setup Zig
+      if: steps.spec-check.outputs.spec_changed == 'true'
       uses: goto-bus-stop/setup-zig@v2
       with:
         version: 0.15.2
 
     - name: Build Sterling
+      if: steps.spec-check.outputs.spec_changed == 'true'
       run: zig build -Doptimize=ReleaseFast
 
     - name: Generate SDKs
+      if: steps.spec-check.outputs.spec_changed == 'true'
       run: |
         ./zig-out/bin/sterling generate \
           --spec chelsea/openapi/orchestrator.openapi.json \
           --config sterling.toml
 
     - name: Upload generated SDKs
+      if: steps.spec-check.outputs.spec_changed == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: generated-sdks
@@ -56,7 +100,7 @@ jobs:
     # ─── Push to SDK repos ──────────────────────────────────────────────
 
     - name: Push TypeScript SDK
-      if: success()
+      if: steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -70,7 +114,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Rust SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -84,7 +128,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Python SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -98,7 +142,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Go SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -112,7 +156,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Java SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -126,7 +170,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Kotlin SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -140,7 +184,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Ruby SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -154,7 +198,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push PHP SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -168,7 +212,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push C# SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -182,7 +226,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Dart SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -196,7 +240,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Scala SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -210,7 +254,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Swift SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -224,7 +268,7 @@ jobs:
         git push -f origin HEAD:main
 
     - name: Push Zig SDK
-      if: success()
+      if: success() && steps.spec-check.outputs.spec_changed == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
       run: |
@@ -241,13 +285,14 @@ jobs:
 
     # --- npm (TypeScript) ---
     - name: Setup Node.js
+      if: steps.spec-check.outputs.spec_changed == 'true'
       uses: actions/setup-node@v4
       with:
         node-version: '22'
         registry-url: 'https://registry.npmjs.org'
 
     - name: Publish to npm
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -259,19 +304,20 @@ jobs:
 
     # --- PyPI (Python) — Trusted publishing via OIDC ---
     - name: Setup Python
+      if: steps.spec-check.outputs.spec_changed == 'true'
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
     - name: Build Python package
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       run: |
         cd generated/python
         pip install build
         python -m build
 
     - name: Publish to PyPI
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
@@ -283,7 +329,7 @@ jobs:
 
     # --- crates.io (Rust) ---
     - name: Publish to crates.io
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
@@ -297,7 +343,7 @@ jobs:
 
     # --- Go proxy (automatic via git tag) ---
     - name: Tag Go module
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
@@ -312,12 +358,13 @@ jobs:
 
     # --- RubyGems (Ruby) ---
     - name: Setup Ruby
+      if: steps.spec-check.outputs.spec_changed == 'true'
       uses: ruby/setup-ruby@v1
       with:
         ruby-version: '3.3'
 
     - name: Publish to RubyGems
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
@@ -332,12 +379,13 @@ jobs:
 
     # --- NuGet (C#) ---
     - name: Setup .NET
+      if: steps.spec-check.outputs.spec_changed == 'true'
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0'
 
     - name: Publish to NuGet
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
@@ -359,6 +407,7 @@ jobs:
 
     # --- Maven Central (Java) ---
     - name: Setup Java
+      if: steps.spec-check.outputs.spec_changed == 'true'
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
@@ -370,7 +419,7 @@ jobs:
         gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
     - name: Publish Java to Maven Central
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
@@ -387,11 +436,11 @@ jobs:
 
     # --- Maven Central (Kotlin) ---
     - name: Setup Gradle
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       uses: gradle/actions/setup-gradle@v4
 
     - name: Publish Kotlin to Maven Central
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
@@ -422,11 +471,11 @@ jobs:
 
     # --- Maven Central (Scala) ---
     - name: Setup sbt
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       uses: sbt/setup-sbt@v1
 
     - name: Publish Scala to Maven Central
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
@@ -457,7 +506,7 @@ jobs:
 
     # --- pub.dev (Dart) — tag-based, GitHub automated publishing ---
     - name: Tag Dart package
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
@@ -471,7 +520,7 @@ jobs:
 
     # --- SwiftPM (Swift) — tag-based, like Go ---
     - name: Tag Swift package
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
@@ -485,7 +534,7 @@ jobs:
 
     # --- Zig — tag-based ---
     - name: Tag Zig package
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}
@@ -499,7 +548,7 @@ jobs:
     # ─── Documentation PR ───────────────────────────────────────────────
 
     - name: Update vers-docs
-      if: always()
+      if: always() && steps.spec-check.outputs.spec_changed == 'true'
       continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.SDK_PUSH_TOKEN }}

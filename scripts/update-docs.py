@@ -466,16 +466,46 @@ def call_claude(system: str, user: str) -> str:
         return data["content"][0]["text"]
 
 
-def find_api_coupled_files(docs_dir: Path) -> list[Path]:
-    """Find .mdx files that contain API endpoint references, SDK code, or model names."""
-    patterns = [
-        r"/api/v1/", r"api\.vers\.sh", r"new_root", r"from_commit", r"ssh_key",
-        r"mem_size_mib", r"vcpu_count", r"fs_size_mib", r"vm_config",
-        r"VersClient\b", r"VersSdkClient\b", r"vers_sdk", r"vers-sdk",
-        r"from 'vers", r'from "vers',
-        r"versApi\(", r'fetch\(`\$\{BASE\}',
-    ]
-    combined = re.compile("|".join(patterns))
+def _build_change_identifiers(changes: dict, spec: dict) -> set[str]:
+    """Extract all identifiers (endpoint paths, operationIds, schema names, field names)
+    that were touched by the API changes. Used to filter which docs files need LLM updates."""
+    ids = set()
+
+    for ep in changes["added_endpoints"] + changes["removed_endpoints"] + changes["changed_endpoints"]:
+        ids.add(ep["path"])
+        ids.add(ep.get("operationId", ""))
+        # Extract path segments as identifiers (e.g. "vm", "commits", "ssh_key")
+        for segment in ep["path"].strip("/").split("/"):
+            if segment and not segment.startswith("{") and segment not in ("api", "v1"):
+                ids.add(segment)
+
+    old_schemas = spec.get("_old_schemas", {})  # stashed by caller
+    new_schemas = spec.get("components", {}).get("schemas", {})
+
+    for name in changes["added_schemas"] + changes["removed_schemas"] + changes["changed_schemas"]:
+        ids.add(name)
+        # Include changed field names so we can match files referencing them
+        old_props = set(old_schemas.get(name, {}).get("properties", {}).keys())
+        new_props = set(new_schemas.get(name, {}).get("properties", {}).keys())
+        ids.update(old_props ^ new_props)  # symmetric difference = added + removed fields
+
+    ids.discard("")
+    return ids
+
+
+def find_affected_files(docs_dir: Path, changes: dict, spec: dict) -> list[tuple[Path, set[str]]]:
+    """Find .mdx files that reference identifiers touched by the API changes.
+    Returns (filepath, set_of_matched_identifiers) tuples — only files that
+    actually reference something that changed."""
+    change_ids = _build_change_identifiers(changes, spec)
+    if not change_ids:
+        return []
+
+    # Build a regex from the change identifiers (escape them, match as words)
+    escaped = [re.escape(id_) for id_ in change_ids if len(id_) > 2]
+    if not escaped:
+        return []
+    pattern = re.compile(r'\b(' + '|'.join(escaped) + r')\b')
 
     # Skip files we regenerate deterministically
     skip = {"api-reference/introduction.mdx", "sdks.mdx"}
@@ -486,29 +516,92 @@ def find_api_coupled_files(docs_dir: Path) -> list[Path]:
         if rel in skip:
             continue
         content = mdx.read_text()
-        if combined.search(content):
-            results.append(mdx)
+        matches = set(pattern.findall(content))
+        if matches:
+            results.append((mdx, matches))
 
     return results
 
 
-def update_file_with_llm(filepath: Path, docs_dir: Path, spec: dict, changes: dict) -> bool:
-    """Use Claude to update a single docs file based on spec changes. Returns True if changed."""
+def _build_surgical_context(matches: set[str], changes: dict, spec: dict) -> str:
+    """Build a minimal context string containing only the spec details relevant
+    to what this specific file references. Much smaller than dumping the full spec."""
+    sections = []
+
+    # 1. Always include the change summary (it's compact)
+    if changes["summary"]:
+        sections.append("What changed in the API:\n" + "\n".join(f"  • {s}" for s in changes["summary"]))
+
+    new_schemas = spec.get("components", {}).get("schemas", {})
+    new_paths = spec.get("paths", {})
+
+    # 2. Include details only for schemas this file references
+    referenced_schemas = set()
+    for name in list(changes.get("added_schemas", [])) + list(changes.get("removed_schemas", [])) + list(changes.get("changed_schemas", [])):
+        if name in matches:
+            referenced_schemas.add(name)
+    # Also check if any match is a field inside a changed schema
+    for name in changes.get("changed_schemas", []):
+        schema = new_schemas.get(name, {})
+        props = set(schema.get("properties", {}).keys())
+        if matches & props:
+            referenced_schemas.add(name)
+
+    if referenced_schemas:
+        schema_lines = []
+        for name in sorted(referenced_schemas):
+            schema = new_schemas.get(name, {})
+            props = schema.get("properties", {})
+            fields = []
+            for fname, fdef in props.items():
+                ftype = fdef.get("type", fdef.get("$ref", "object").split("/")[-1])
+                fields.append(f"    {fname}: {ftype}")
+            schema_lines.append(f"  {name}:\n" + "\n".join(fields))
+        sections.append("Affected schemas (current fields):\n" + "\n".join(schema_lines))
+
+    # 3. Include details only for endpoints this file references
+    referenced_endpoints = []
+    all_changed_eps = changes["added_endpoints"] + changes["removed_endpoints"] + changes["changed_endpoints"]
+    for ep in all_changed_eps:
+        ep_ids = {ep["path"], ep.get("operationId", "")}
+        for segment in ep["path"].strip("/").split("/"):
+            if segment and not segment.startswith("{") and segment not in ("api", "v1"):
+                ep_ids.add(segment)
+        if matches & ep_ids:
+            # Include the full endpoint spec for context
+            path_spec = new_paths.get(ep["path"], {})
+            method_lower = ep["method"].lower()
+            op_spec = path_spec.get(method_lower, {})
+            summary = op_spec.get("summary", "")
+            params = [p.get("name", "") for p in op_spec.get("parameters", []) if p.get("in") == "query"]
+            req_ref = ""
+            rb = op_spec.get("requestBody", {})
+            if rb:
+                content = rb.get("content", {}).get("application/json", {})
+                schema = content.get("schema", {})
+                req_ref = schema.get("$ref", "").split("/")[-1] if "$ref" in schema else ""
+            detail = f"  {ep['method']} {ep['path']}"
+            if summary:
+                detail += f" — {summary}"
+            if params:
+                detail += f"\n    query params: {', '.join(params)}"
+            if req_ref:
+                detail += f"\n    request body: {req_ref}"
+            referenced_endpoints.append(detail)
+
+    if referenced_endpoints:
+        sections.append("Affected endpoints (current spec):\n" + "\n".join(referenced_endpoints))
+
+    return "\n\n".join(sections)
+
+
+def update_file_with_llm(filepath: Path, docs_dir: Path, spec: dict, changes: dict, matches: set[str]) -> bool:
+    """Use Claude to update a single docs file based on spec changes. Returns True if changed.
+    Only sends context relevant to what this file actually references (surgical)."""
     content = filepath.read_text()
     rel = str(filepath.relative_to(docs_dir))
 
-    # Build a compact spec summary for context
-    endpoints_summary = []
-    for path, methods in sorted(spec["paths"].items()):
-        for m in ("get","post","put","delete","patch"):
-            if m in methods:
-                op = methods[m]
-                endpoints_summary.append(f"{m.upper()} {path} — {op.get('operationId','')}")
-
-    schemas_summary = []
-    for name, schema in sorted(spec.get("components",{}).get("schemas",{}).items()):
-        props = list(schema.get("properties", {}).keys())
-        schemas_summary.append(f"{name}: {', '.join(props[:8])}" + ("..." if len(props) > 8 else ""))
+    context = _build_surgical_context(matches, changes, spec)
 
     system = """You update documentation files to match the current Vers API.
 
@@ -530,14 +623,7 @@ Rules:
 {content}
 </file>
 
-Here is what changed in the API:
-{json.dumps(changes['summary'], indent=2) if changes['summary'] else 'No structural changes, but models/endpoints may have updated fields.'}
-
-Here is the current API (all endpoints):
-{chr(10).join(endpoints_summary)}
-
-Here are the current models (with their fields):
-{chr(10).join(schemas_summary)}
+{context}
 
 Update the file so all code samples, API endpoint references, request/response JSON examples, and model field names match the current API. Return the complete updated file."""
 
@@ -619,16 +705,24 @@ def main():
         if not api_key:
             print("\n⚠️  ANTHROPIC_API_KEY not set, skipping LLM updates")
         else:
-            coupled_files = find_api_coupled_files(docs_dir)
-            if coupled_files:
-                print(f"\n── LLM updates ({len(coupled_files)} files) ──")
+            # Stash old schemas on spec so the surgical context builder can diff fields
+            new_spec["_old_schemas"] = old_spec.get("components", {}).get("schemas", {})
+
+            affected = find_affected_files(docs_dir, changes, new_spec)
+            if affected:
+                print(f"\n── LLM updates ({len(affected)} files reference changed API surface) ──")
                 updated_count = 0
-                for f in coupled_files:
-                    if update_file_with_llm(f, docs_dir, new_spec, changes):
+                for filepath, matches in affected:
+                    rel = str(filepath.relative_to(docs_dir))
+                    print(f"  {rel}: matched [{', '.join(sorted(matches)[:5])}{'…' if len(matches) > 5 else ''}]")
+                    if update_file_with_llm(filepath, docs_dir, new_spec, changes, matches):
                         updated_count += 1
-                print(f"\n  {updated_count}/{len(coupled_files)} files updated by LLM")
+                print(f"\n  {updated_count}/{len(affected)} files updated by LLM")
             else:
-                print("\n  No API-coupled docs files found")
+                print("\n  No docs files reference the changed API surface — skipping LLM")
+
+            # Clean up stashed data
+            new_spec.pop("_old_schemas", None)
     elif use_llm:
         print("\n── LLM updates skipped (no meaningful API changes) ──")
 
