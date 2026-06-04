@@ -13,12 +13,37 @@ const BuildResult = struct {
     errors: ?[]const u8,
 };
 
+const LLMMetrics = struct {
+    files_enhanced: u32 = 0,
+    total_input_tokens: u32 = 0,
+    total_output_tokens: u32 = 0,
+    enhancement_triggered: bool = false,
+    
+    pub fn addUsage(self: *LLMMetrics, input_tokens: u32, output_tokens: u32) void {
+        self.files_enhanced += 1;
+        self.total_input_tokens += input_tokens;
+        self.total_output_tokens += output_tokens;
+    }
+    
+    pub fn getTotalTokens(self: *const LLMMetrics) u32 {
+        return self.total_input_tokens + self.total_output_tokens;
+    }
+    
+    pub fn estimateCost(self: *const LLMMetrics) f64 {
+        // Claude 3.5 Sonnet pricing: $3.00/1M input, $15.00/1M output
+        const input_cost = @as(f64, @floatFromInt(self.total_input_tokens)) * 3.00 / 1_000_000.0;
+        const output_cost = @as(f64, @floatFromInt(self.total_output_tokens)) * 15.00 / 1_000_000.0;
+        return input_cost + output_cost;
+    }
+};
+
 pub const SDKGenerator = struct {
     allocator: std.mem.Allocator,
     spec: parser.OpenAPISpec,
     cfg: config.Config,
     enhance: bool = false,
     enhancer: ?enhancer_mod.Enhancer = null,
+    llm_metrics: LLMMetrics = .{},
 
     pub fn init(allocator: std.mem.Allocator, spec: parser.OpenAPISpec, cfg: config.Config) SDKGenerator {
         return .{ .allocator = allocator, .spec = spec, .cfg = cfg };
@@ -2146,6 +2171,7 @@ pub const SDKGenerator = struct {
         defer if (build_result.errors) |errors| self.allocator.free(errors);
 
         if (!build_result.success) {
+            self.llm_metrics.enhancement_triggered = true;
             std.debug.print("Build errors detected. Enhancing SDK with LLM...\n", .{});
             try self.enhanceExistingFilesWithErrors(target, build_result.errors);
             
@@ -2207,10 +2233,15 @@ pub const SDKGenerator = struct {
                 
                 const lang_name = @tagName(target.language);
                 std.debug.print("  Enhancing {s}...\n", .{entry.path});
-                const enhanced_content = self.enhancer.?.enhanceWithContext(original_content, lang_name, entry.basename, build_errors);
-                defer self.allocator.free(enhanced_content);
+                const result = self.enhancer.?.enhanceWithContext(original_content, lang_name, entry.basename, build_errors);
+                defer if (result.content.ptr != original_content.ptr) self.allocator.free(result.content);
                 
-                std.fs.cwd().writeFile(.{ .sub_path = file_path, .data = enhanced_content }) catch |err| {
+                // Track token usage
+                if (result.input_tokens > 0 or result.output_tokens > 0) {
+                    self.llm_metrics.addUsage(result.input_tokens, result.output_tokens);
+                }
+                
+                std.fs.cwd().writeFile(.{ .sub_path = file_path, .data = result.content }) catch |err| {
                     std.debug.print("Warning: failed to write enhanced {s}: {}\n", .{ entry.path, err });
                 };
             }
@@ -2266,6 +2297,35 @@ pub const SDKGenerator = struct {
             const combined_errors = std.fmt.allocPrint(self.allocator, "STDOUT:\n{s}\n\nSTDERR:\n{s}", .{ stdout, stderr }) catch null;
             return BuildResult{ .success = false, .errors = combined_errors };
         }
+    }
+
+    /// Print LLM token usage metrics
+    pub fn printLLMMetrics(self: *const SDKGenerator) void {
+        if (!self.enhance) {
+            std.debug.print("\n📊 LLM Enhancement: Disabled\n", .{});
+            return;
+        }
+
+        std.debug.print("\n📊 LLM Enhancement Metrics:\n", .{});
+        
+        if (!self.llm_metrics.enhancement_triggered) {
+            std.debug.print("   Status: ✅ No enhancement needed (builds successful)\n", .{});
+            std.debug.print("   Tokens: 0 (cost: $0.00)\n", .{});
+            std.debug.print("   Files: 0 enhanced\n", .{});
+        } else {
+            const total_tokens = self.llm_metrics.getTotalTokens();
+            const cost = self.llm_metrics.estimateCost();
+            
+            std.debug.print("   Status: 🔧 Enhancement triggered (build errors fixed)\n", .{});
+            std.debug.print("   Tokens: {} total ({} input + {} output)\n", .{
+                total_tokens, 
+                self.llm_metrics.total_input_tokens, 
+                self.llm_metrics.total_output_tokens
+            });
+            std.debug.print("   Cost: ${d:.4} (Claude 3.5 Sonnet)\n", .{cost});
+            std.debug.print("   Files: {} enhanced\n", .{self.llm_metrics.files_enhanced});
+        }
+        std.debug.print("", .{});
     }
 
     fn renderTo(self: *SDKGenerator, tmpl_path: []const u8, out_dir: []const u8, rel: []const u8, ctx: *template.Context) !void {
