@@ -39,9 +39,9 @@ fn printUsage() void {
     std.debug.print("  sterling init                    # Create example sterling.toml\n", .{});
     std.debug.print("  sterling version                 # Show version info\n", .{});
     std.debug.print("\nOptions:\n", .{});
-    std.debug.print("  --enhance                        # Enable LLM code enhancement\n", .{});
+    std.debug.print("  --enhance                        # Enable LLM enhancement on build errors\n", .{});
     std.debug.print("\nEnvironment Variables:\n", .{});
-    std.debug.print("  ANTHROPIC_API_KEY               # For LLM enhancement\n", .{});
+    std.debug.print("  ANTHROPIC_API_KEY               # For LLM enhancement on errors\n", .{});
     std.debug.print("  GITHUB_TOKEN                    # For GitHub automation\n", .{});
     std.debug.print("\n", .{});
 }

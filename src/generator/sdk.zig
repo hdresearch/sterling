@@ -8,6 +8,11 @@ fn loadTemplate(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
 }
 
+const BuildResult = struct {
+    success: bool,
+    errors: ?[]const u8,
+};
+
 pub const SDKGenerator = struct {
     allocator: std.mem.Allocator,
     spec: parser.OpenAPISpec,
@@ -49,6 +54,9 @@ pub const SDKGenerator = struct {
             .scala => try self.generateScala(target),
             .swift => try self.generateSwift(target),
         }
+        
+        // Validate build and enhance if needed
+        try self.validateAndEnhanceIfNeeded(target);
     }
 
     // ── Derive names from spec + config ─────────────────────────────────
@@ -2119,6 +2127,147 @@ pub const SDKGenerator = struct {
         };
     }
 
+    /// Validate that the generated SDK builds successfully. If not, and enhancement is enabled,
+    /// regenerate with LLM enhancement to fix build errors.
+    fn validateAndEnhanceIfNeeded(self: *SDKGenerator, target: config.Config.Target) !void {
+        if (!self.enhance or self.enhancer == null) return;
+
+        std.debug.print("Validating build for {s} SDK...\n", .{@tagName(target.language)});
+        
+        const build_result = switch (target.language) {
+            .typescript => self.validateTypeScriptBuildWithErrors(target.output_dir),
+            .rust => self.validateRustBuildWithErrors(target.output_dir),
+            .python => self.validatePythonBuildWithErrors(target.output_dir),
+            .go => self.validateGoBuildWithErrors(target.output_dir),
+            .java => self.validateJavaBuildWithErrors(target.output_dir),
+            .kotlin => self.validateKotlinBuildWithErrors(target.output_dir),
+            else => BuildResult{ .success = true, .errors = null }, // Skip validation for unsupported languages
+        };
+        defer if (build_result.errors) |errors| self.allocator.free(errors);
+
+        if (!build_result.success) {
+            std.debug.print("Build errors detected. Enhancing SDK with LLM...\n", .{});
+            try self.enhanceExistingFilesWithErrors(target, build_result.errors);
+            
+            // Re-validate after enhancement
+            const enhanced_result = switch (target.language) {
+                .typescript => self.validateTypeScriptBuildWithErrors(target.output_dir),
+                .rust => self.validateRustBuildWithErrors(target.output_dir),
+                .python => self.validatePythonBuildWithErrors(target.output_dir),
+                .go => self.validateGoBuildWithErrors(target.output_dir),
+                .java => self.validateJavaBuildWithErrors(target.output_dir),
+                .kotlin => self.validateKotlinBuildWithErrors(target.output_dir),
+                else => BuildResult{ .success = true, .errors = null },
+            };
+            defer if (enhanced_result.errors) |errors| self.allocator.free(errors);
+            
+            if (enhanced_result.success) {
+                std.debug.print("✅ Build fixed with LLM enhancement!\n", .{});
+            } else {
+                std.debug.print("⚠️  Build still has errors after enhancement\n", .{});
+            }
+        } else {
+            std.debug.print("✅ Build successful, no enhancement needed\n", .{});
+        }
+    }
+
+    /// Enhance all existing source code files in the output directory
+    fn enhanceExistingFilesWithErrors(self: *SDKGenerator, target: config.Config.Target, build_errors: ?[]const u8) !void {
+        var dir = std.fs.cwd().openDir(target.output_dir, .{}) catch return;
+        defer dir.close();
+        var walker = try dir.walk(self.allocator);
+        defer walker.deinit();
+
+        while (try walker.next()) |entry| {
+            if (entry.kind != .file) continue;
+            
+            const ext = std.fs.path.extension(entry.basename);
+            const should_enhance = switch (target.language) {
+                .typescript => std.mem.eql(u8, ext, ".ts") or std.mem.eql(u8, ext, ".js"),
+                .rust => std.mem.eql(u8, ext, ".rs"),
+                .python => std.mem.eql(u8, ext, ".py"),
+                .go => std.mem.eql(u8, ext, ".go"),
+                .java => std.mem.eql(u8, ext, ".java"),
+                .kotlin => std.mem.eql(u8, ext, ".kt"),
+                .ruby => std.mem.eql(u8, ext, ".rb"),
+                .php => std.mem.eql(u8, ext, ".php"),
+                .csharp => std.mem.eql(u8, ext, ".cs"),
+                .dart => std.mem.eql(u8, ext, ".dart"),
+                .scala => std.mem.eql(u8, ext, ".scala"),
+                .swift => std.mem.eql(u8, ext, ".swift"),
+                .zig => std.mem.eql(u8, ext, ".zig"),
+            };
+
+            if (should_enhance) {
+                const file_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ target.output_dir, entry.path });
+                defer self.allocator.free(file_path);
+                
+                const original_content = std.fs.cwd().readFileAlloc(self.allocator, file_path, 1024 * 1024) catch continue;
+                defer self.allocator.free(original_content);
+                
+                const lang_name = @tagName(target.language);
+                std.debug.print("  Enhancing {s}...\n", .{entry.path});
+                const enhanced_content = self.enhancer.?.enhanceWithContext(original_content, lang_name, entry.basename, build_errors);
+                defer self.allocator.free(enhanced_content);
+                
+                std.fs.cwd().writeFile(.{ .sub_path = file_path, .data = enhanced_content }) catch |err| {
+                    std.debug.print("Warning: failed to write enhanced {s}: {}\n", .{ entry.path, err });
+                };
+            }
+        }
+    }
+
+    // Build validation functions
+    fn validateTypeScriptBuildWithErrors(self: *SDKGenerator, output_dir: []const u8) BuildResult {
+        return self.runBuildCommandWithErrors(output_dir, &.{ "npx", "tsc", "--noEmit" });
+    }
+
+    fn validateRustBuildWithErrors(self: *SDKGenerator, output_dir: []const u8) BuildResult {
+        return self.runBuildCommandWithErrors(output_dir, &.{ "cargo", "check" });
+    }
+
+    fn validatePythonBuildWithErrors(self: *SDKGenerator, output_dir: []const u8) BuildResult {
+        return self.runBuildCommandWithErrors(output_dir, &.{ "python", "-m", "py_compile", "*.py" });
+    }
+
+    fn validateGoBuildWithErrors(self: *SDKGenerator, output_dir: []const u8) BuildResult {
+        return self.runBuildCommandWithErrors(output_dir, &.{ "go", "build", "./..." });
+    }
+
+    fn validateJavaBuildWithErrors(self: *SDKGenerator, output_dir: []const u8) BuildResult {
+        return self.runBuildCommandWithErrors(output_dir, &.{ "javac", "*.java" });
+    }
+
+    fn validateKotlinBuildWithErrors(self: *SDKGenerator, output_dir: []const u8) BuildResult {
+        return self.runBuildCommandWithErrors(output_dir, &.{ "kotlinc", "*.kt" });
+    }
+
+    fn runBuildCommandWithErrors(self: *SDKGenerator, working_dir: []const u8, command: []const []const u8) BuildResult {
+        var child = std.process.Child.init(command, self.allocator);
+        child.cwd = working_dir;
+        child.stdout_behavior = .Pipe;
+        child.stderr_behavior = .Pipe;
+        
+        child.spawn() catch return BuildResult{ .success = false, .errors = null };
+        
+        // Capture stdout and stderr for error analysis
+        const stdout = child.stdout.?.readToEndAlloc(self.allocator, 1024 * 1024) catch return BuildResult{ .success = false, .errors = null };
+        defer self.allocator.free(stdout);
+        const stderr = child.stderr.?.readToEndAlloc(self.allocator, 1024 * 1024) catch return BuildResult{ .success = false, .errors = null };
+        defer self.allocator.free(stderr);
+        
+        const term = child.wait() catch return BuildResult{ .success = false, .errors = null };
+        const success = term.Exited == 0;
+        
+        if (success) {
+            return BuildResult{ .success = true, .errors = null };
+        } else {
+            // Combine stdout and stderr for error context
+            const combined_errors = std.fmt.allocPrint(self.allocator, "STDOUT:\n{s}\n\nSTDERR:\n{s}", .{ stdout, stderr }) catch null;
+            return BuildResult{ .success = false, .errors = combined_errors };
+        }
+    }
+
     fn renderTo(self: *SDKGenerator, tmpl_path: []const u8, out_dir: []const u8, rel: []const u8, ctx: *template.Context) !void {
         const out_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ out_dir, rel });
         defer self.allocator.free(out_path);
@@ -2129,47 +2278,19 @@ pub const SDKGenerator = struct {
         defer self.allocator.free(tmpl);
         var engine = template.Engine.init(self.allocator);
         const content = try engine.render(tmpl, ctx);
+        defer self.allocator.free(content);
 
-        // Optional LLM enhancement pass
-        const final_content = if (self.enhance and self.enhancer != null) blk: {
-            // Only enhance source code files, not configs/READMEs
-            const is_code = std.mem.endsWith(u8, rel, ".ts") or
-                std.mem.endsWith(u8, rel, ".rs") or
-                std.mem.endsWith(u8, rel, ".py") or
-                std.mem.endsWith(u8, rel, ".go") or
-                std.mem.endsWith(u8, rel, ".zig") or
-                std.mem.endsWith(u8, rel, ".java") or
-                std.mem.endsWith(u8, rel, ".kt") or
-                std.mem.endsWith(u8, rel, ".rb") or
-                std.mem.endsWith(u8, rel, ".php") or
-                std.mem.endsWith(u8, rel, ".cs") or
-                std.mem.endsWith(u8, rel, ".dart") or
-                std.mem.endsWith(u8, rel, ".scala") or
-                std.mem.endsWith(u8, rel, ".swift");
-            if (is_code) {
-                const lang = if (std.mem.endsWith(u8, rel, ".ts")) "typescript"
-                    else if (std.mem.endsWith(u8, rel, ".rs")) "rust"
-                    else if (std.mem.endsWith(u8, rel, ".py")) "python"
-                    else if (std.mem.endsWith(u8, rel, ".go")) "go"
-                    else if (std.mem.endsWith(u8, rel, ".java")) "java"
-                    else if (std.mem.endsWith(u8, rel, ".kt")) "kotlin"
-                    else if (std.mem.endsWith(u8, rel, ".rb")) "ruby"
-                    else if (std.mem.endsWith(u8, rel, ".php")) "php"
-                    else if (std.mem.endsWith(u8, rel, ".cs")) "csharp"
-                    else if (std.mem.endsWith(u8, rel, ".dart")) "dart"
-                    else if (std.mem.endsWith(u8, rel, ".scala")) "scala"
-                    else if (std.mem.endsWith(u8, rel, ".swift")) "swift"
-                    else "zig";
-                std.debug.print("  Enhancing {s}...\n", .{rel});
-                break :blk self.enhancer.?.enhance(content, lang, rel);
-            }
-            break :blk content;
-        } else content;
-        defer self.allocator.free(final_content);
-
+        // Write initial content without enhancement
+        // Ensure parent directory exists
+        if (std.fs.path.dirname(out_path)) |parent_dir| {
+            std.fs.cwd().makePath(parent_dir) catch |err| switch (err) {
+                error.PathAlreadyExists => {},
+                else => return err,
+            };
+        }
         const file = try std.fs.cwd().createFile(out_path, .{});
         defer file.close();
-        try file.writeAll(final_content);
+        try file.writeAll(content);
     }
 
     // ── String sanitisation ────────────────────────────────────────────

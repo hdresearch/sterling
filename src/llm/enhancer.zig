@@ -18,19 +18,37 @@ pub const Enhancer = struct {
     /// Post-process a generated SDK file through the LLM for polish.
     /// Returns the enhanced content, or the original on any failure.
     pub fn enhance(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8) []const u8 {
-        return self.enhanceInner(code, language, filename) catch |err| {
+        return self.enhanceWithContext(code, language, filename, null);
+    }
+
+    /// Enhance code with optional build error context
+    pub fn enhanceWithContext(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8, build_errors: ?[]const u8) []const u8 {
+        return self.enhanceInner(code, language, filename, build_errors) catch |err| {
             std.debug.print("LLM enhancement skipped for {s}: {}\n", .{ filename, err });
             return code;
         };
     }
 
-    fn enhanceInner(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8) ![]const u8 {
+    fn enhanceInner(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8, build_errors: ?[]const u8) ![]const u8 {
         // Build the prompt — we write it to a temp file to avoid shell escaping issues
+        const error_context = if (build_errors) |errors|
+            try std.fmt.allocPrint(self.allocator, 
+                \\
+                \\IMPORTANT: The generated code has build errors that need fixing:
+                \\```
+                \\{s}
+                \\```
+                \\
+            , .{errors})
+        else 
+            "";
+        defer if (build_errors != null) self.allocator.free(error_context);
+
         const prompt = try std.fmt.allocPrint(self.allocator,
-            \\You are a code quality enhancer. Improve this generated {s} SDK file ({s}).
+            \\You are a code quality enhancer. {s}Improve this generated {s} SDK file ({s}).
             \\
             \\Rules:
-            \\- Fix any type errors or missing imports
+            \\- Fix any type errors or missing imports{s}
             \\- Add doc comments to public functions/types that lack them
             \\- Improve error handling (use language-idiomatic error types)
             \\- Do NOT change the public API surface (function names, parameter types)
@@ -41,7 +59,14 @@ pub const Enhancer = struct {
             \\```{s}
             \\{s}
             \\```
-        , .{ language, filename, language, code });
+        , .{ 
+            error_context, 
+            language, 
+            filename, 
+            if (build_errors != null) " (PRIORITY: fix the build errors shown above)" else "",
+            language, 
+            code 
+        });
         defer self.allocator.free(prompt);
 
         // Write prompt to temp file (avoids shell quoting hell)
