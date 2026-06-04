@@ -123,6 +123,9 @@ fn handleGenerate(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     }
 
     std.debug.print("\n✅ SDK generation completed successfully!\n", .{});
+    
+    // Print LLM token usage metrics
+    generator.printLLMMetrics();
 }
 
 fn handleInit() !void {

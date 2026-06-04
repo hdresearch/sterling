@@ -7,6 +7,12 @@ pub const LLMConfig = struct {
     max_tokens: u32 = 4096,
 };
 
+pub const EnhancementResult = struct {
+    content: []const u8,
+    input_tokens: u32,
+    output_tokens: u32,
+};
+
 pub const Enhancer = struct {
     allocator: std.mem.Allocator,
     config: LLMConfig,
@@ -18,18 +24,20 @@ pub const Enhancer = struct {
     /// Post-process a generated SDK file through the LLM for polish.
     /// Returns the enhanced content, or the original on any failure.
     pub fn enhance(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8) []const u8 {
-        return self.enhanceWithContext(code, language, filename, null);
+        const result = self.enhanceWithContext(code, language, filename, null);
+        defer if (result.content.ptr != code.ptr) self.allocator.free(result.content);
+        return result.content;
     }
 
-    /// Enhance code with optional build error context
-    pub fn enhanceWithContext(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8, build_errors: ?[]const u8) []const u8 {
+    /// Enhance code with optional build error context, returns usage info
+    pub fn enhanceWithContext(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8, build_errors: ?[]const u8) EnhancementResult {
         return self.enhanceInner(code, language, filename, build_errors) catch |err| {
             std.debug.print("LLM enhancement skipped for {s}: {}\n", .{ filename, err });
-            return code;
+            return .{ .content = code, .input_tokens = 0, .output_tokens = 0 };
         };
     }
 
-    fn enhanceInner(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8, build_errors: ?[]const u8) ![]const u8 {
+    fn enhanceInner(self: *Enhancer, code: []const u8, language: []const u8, filename: []const u8, build_errors: ?[]const u8) !EnhancementResult {
         // Build the prompt — we write it to a temp file to avoid shell escaping issues
         const error_context = if (build_errors) |errors|
             try std.fmt.allocPrint(self.allocator, 
@@ -135,11 +143,11 @@ pub const Enhancer = struct {
         }
         defer self.allocator.free(stdout);
 
-        // Parse response — extract content[0].text
-        return self.extractContent(stdout);
+        // Parse response — extract content and usage
+        return self.extractContentAndUsage(stdout, code.len);
     }
 
-    fn extractContent(self: *Enhancer, response: []const u8) ![]const u8 {
+    fn extractContentAndUsage(self: *Enhancer, response: []const u8, input_chars: usize) !EnhancementResult {
         // Use jq to extract the text content — more reliable than hand-parsing
         const input_path = "/tmp/sterling_llm_response.json";
         {
@@ -149,36 +157,71 @@ pub const Enhancer = struct {
         }
         defer std.fs.cwd().deleteFile(input_path) catch {};
 
-        const cmd = try std.fmt.allocPrint(self.allocator, "jq -r '.content[0].text // empty' {s}", .{input_path});
-        defer self.allocator.free(cmd);
+        // Extract content
+        const content_cmd = try std.fmt.allocPrint(self.allocator, "jq -r '.content[0].text // empty' {s}", .{input_path});
+        defer self.allocator.free(content_cmd);
 
-        var child = std.process.Child.init(&.{ "sh", "-c", cmd }, self.allocator);
-        child.stdout_behavior = .Pipe;
-        child.stderr_behavior = .Pipe;
-        try child.spawn();
-        const text = try child.stdout.?.readToEndAlloc(self.allocator, 1024 * 1024);
-        const jq_err = try child.stderr.?.readToEndAlloc(self.allocator, 16 * 1024);
-        defer self.allocator.free(jq_err);
-        const term = try child.wait();
-        if (term.Exited != 0 or text.len == 0) {
+        var content_child = std.process.Child.init(&.{ "sh", "-c", content_cmd }, self.allocator);
+        content_child.stdout_behavior = .Pipe;
+        content_child.stderr_behavior = .Pipe;
+        try content_child.spawn();
+        const text = try content_child.stdout.?.readToEndAlloc(self.allocator, 1024 * 1024);
+        const content_err = try content_child.stderr.?.readToEndAlloc(self.allocator, 16 * 1024);
+        defer self.allocator.free(content_err);
+        const content_term = try content_child.wait();
+        if (content_term.Exited != 0 or text.len == 0) {
             self.allocator.free(text);
             return error.ContentExtractionFailed;
         }
 
+        // Extract usage info
+        const usage_cmd = try std.fmt.allocPrint(self.allocator, "jq -r '.usage | \"\\(.input_tokens),\\(.output_tokens)\"' {s}", .{input_path});
+        defer self.allocator.free(usage_cmd);
+
+        var usage_child = std.process.Child.init(&.{ "sh", "-c", usage_cmd }, self.allocator);
+        usage_child.stdout_behavior = .Pipe;
+        usage_child.stderr_behavior = .Pipe;
+        try usage_child.spawn();
+        const usage_text = try usage_child.stdout.?.readToEndAlloc(self.allocator, 1024);
+        defer self.allocator.free(usage_text);
+        const usage_err = try usage_child.stderr.?.readToEndAlloc(self.allocator, 1024);
+        defer self.allocator.free(usage_err);
+        const usage_term = try usage_child.wait();
+        
+        var input_tokens: u32 = 0;
+        var output_tokens: u32 = 0;
+        if (usage_term.Exited == 0 and usage_text.len > 0) {
+            var parts = std.mem.splitSequence(u8, std.mem.trim(u8, usage_text, " \t\n\r"), ",");
+            if (parts.next()) |input_str| {
+                input_tokens = std.fmt.parseInt(u32, std.mem.trim(u8, input_str, " \t\n\r"), 10) catch 0;
+            }
+            if (parts.next()) |output_str| {
+                output_tokens = std.fmt.parseInt(u32, std.mem.trim(u8, output_str, " \t\n\r"), 10) catch 0;
+            }
+        } else {
+            // Fallback: estimate tokens from character count (~4 chars per token)
+            input_tokens = @intCast((input_chars + 3) / 4);
+            output_tokens = @intCast((text.len + 3) / 4);
+        }
+
         // Strip markdown code fences if present
         const trimmed = std.mem.trim(u8, text, " \t\n\r");
-        if (std.mem.startsWith(u8, trimmed, "```")) {
+        const final_content = if (std.mem.startsWith(u8, trimmed, "```")) blk: {
             // Find end of first line (```typescript etc)
-            const first_nl = std.mem.indexOfScalar(u8, trimmed, '\n') orelse return try self.allocator.dupe(u8, trimmed);
+            const first_nl = std.mem.indexOfScalar(u8, trimmed, '\n') orelse break :blk try self.allocator.dupe(u8, trimmed);
             const rest = trimmed[first_nl + 1 ..];
             // Find closing ```
             if (std.mem.lastIndexOf(u8, rest, "```")) |end| {
-                return try self.allocator.dupe(u8, std.mem.trim(u8, rest[0..end], " \t\n\r"));
+                break :blk try self.allocator.dupe(u8, std.mem.trim(u8, rest[0..end], " \t\n\r"));
             }
-            return try self.allocator.dupe(u8, rest);
-        }
+            break :blk try self.allocator.dupe(u8, rest);
+        } else try self.allocator.dupe(u8, trimmed);
 
-        return try self.allocator.dupe(u8, trimmed);
+        return .{
+            .content = final_content,
+            .input_tokens = input_tokens,
+            .output_tokens = output_tokens,
+        };
     }
 
     const error_set = error{
