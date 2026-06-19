@@ -294,14 +294,22 @@ jobs:
 
     - name: Publish to npm
       if: always() && steps.spec-check.outputs.spec_changed == 'true'
-      continue-on-error: true
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       run: |
         cd generated/typescript
         npm install
         npx tsc
-        npm publish --access public || echo "⚠️ npm publish skipped (version may already exist)"
+        npm publish --access public 2>&1 | tee /tmp/npm-publish.log; NPM_EXIT=${PIPESTATUS[0]}
+        if [ $NPM_EXIT -ne 0 ]; then
+          if grep -qE "E409|EPUBLISHCONFLICT|previously published versions" /tmp/npm-publish.log; then
+            echo "⚠️ npm publish skipped — version already exists"
+          else
+            echo "❌ npm publish FAILED (exit $NPM_EXIT):"
+            cat /tmp/npm-publish.log
+            exit 1
+          fi
+        fi
 
     # --- PyPI (Python) — Trusted publishing via OIDC ---
     - name: Setup Python
