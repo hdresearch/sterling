@@ -18,9 +18,11 @@ public final class Models {
 
 {{#each models}}
 {{#if is_enum}}
+{{#if description}}
     /**
      * {{description}}
      */
+{{/if}}
     public enum {{name}} {
 {{#each enum_values}}
         {{upper_value}}("{{value}}"){{#if is_last}};{{else}},{{/if}}
@@ -46,7 +48,10 @@ public final class Models {
 {{else}}
 {{#if is_union}}
     /**
+{{#if description}}
      * {{description}}
+     *
+{{/if}}
      * This is a union type — exactly one field should be set.
      */
     public static class {{name}} {
@@ -62,9 +67,11 @@ public final class Models {
 
 {{else}}
 {{#if has_properties}}
+{{#if description}}
     /**
      * {{description}}
      */
+{{/if}}
     public static class {{name}} {
 {{#each properties}}
 {{#if description}}
@@ -102,9 +109,11 @@ public final class Models {
 {{/each}}
 {{/if}}
 {{else}}
+{{#if description}}
     /**
      * {{description}}
      */
+{{/if}}
     public static class {{name}} {
         @JsonProperty("data")
         private Object data;
