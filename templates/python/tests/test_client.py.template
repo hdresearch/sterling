@@ -62,7 +62,7 @@ def make_mock(status: int = 200, body: Any = None) -> AsyncMock:
 
 
 def run(coro: Any) -> Any:
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 {{#each operations}}
