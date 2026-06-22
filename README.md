@@ -11,6 +11,7 @@ flowchart TD
     spec --> sdks
 
     subgraph sdks["Generated SDKs"]
+        direction LR
         ts["🟦 TypeScript"]
         rs["🦀 Rust"]
         py["🐍 Python"]
