@@ -5,7 +5,7 @@ Open-source OpenAPI SDK generator written in Zig. Parses an OpenAPI 3.1 spec and
 Built as an alternative to [Stainless](https://stainlessapi.com/).
 
 ```mermaid
-flowchart LR
+flowchart TD
     spec["📄 OpenAPI Spec\n(.json / .yaml)"]
 
     spec --> sdks
