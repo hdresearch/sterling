@@ -8,19 +8,23 @@ Built as an alternative to [Stainless](https://stainlessapi.com/).
 flowchart LR
     spec["📄 OpenAPI Spec\n(.json / .yaml)"]
 
-    spec --> ts["🟦 TypeScript"]
-    spec --> rs["🦀 Rust"]
-    spec --> py["🐍 Python"]
-    spec --> go["🐹 Go"]
-    spec --> zig["⚡ Zig"]
-    spec --> java["☕ Java"]
-    spec --> kt["🟣 Kotlin"]
-    spec --> cs["🟩 C#"]
-    spec --> swift["🍎 Swift"]
-    spec --> dart["🎯 Dart"]
-    spec --> rb["💎 Ruby"]
-    spec --> php["🐘 PHP"]
-    spec --> scala["🔴 Scala"]
+    spec --> sdks
+
+    subgraph sdks["Generated SDKs"]
+        ts["🟦 TypeScript"]
+        rs["🦀 Rust"]
+        py["🐍 Python"]
+        go["🐹 Go"]
+        zig["⚡ Zig"]
+        java["☕ Java"]
+        kt["🟣 Kotlin"]
+        cs["🟩 C#"]
+        swift["🍎 Swift"]
+        dart["🎯 Dart"]
+        rb["💎 Ruby"]
+        php["🐘 PHP"]
+        scala["🔴 Scala"]
+    end
 ```
 
 ## Quick start
