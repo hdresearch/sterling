@@ -13,6 +13,14 @@ flowchart LR
     spec --> py["🐍 Python"]
     spec --> go["🐹 Go"]
     spec --> zig["⚡ Zig"]
+    spec --> java["☕ Java"]
+    spec --> kt["🟣 Kotlin"]
+    spec --> cs["🟩 C#"]
+    spec --> swift["🍎 Swift"]
+    spec --> dart["🎯 Dart"]
+    spec --> rb["💎 Ruby"]
+    spec --> php["🐘 PHP"]
+    spec --> scala["🔴 Scala"]
 ```
 
 ## Quick start
