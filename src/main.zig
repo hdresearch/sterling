@@ -2,6 +2,7 @@ const std = @import("std");
 const parser = @import("parser/openapi.zig");
 const config = @import("config/config.zig");
 const sdk_gen = @import("generator/sdk.zig");
+const telemetry = @import("telemetry/timer.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -78,17 +79,24 @@ fn handleGenerate(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         std.debug.print("  LLM Enhancement: Enabled\n", .{});
     }
 
+    var tracer = telemetry.Tracer.init(allocator);
+    defer tracer.deinit();
+
     // Load configuration
+    tracer.start("load config");
     const cfg = config.loadConfig(allocator, config_file.?) catch |err| {
         std.debug.print("Error loading config: {}\n", .{err});
         return;
     };
+    try tracer.stop();
 
     // Parse OpenAPI spec
+    tracer.start("parse spec");
     var spec = parser.parseOpenAPIFile(allocator, spec_file.?) catch |err| {
         std.debug.print("Error parsing OpenAPI spec: {}\n", .{err});
         return;
     };
+    try tracer.stop();
     _ = &spec;
 
     // Generate SDKs for each target in config
@@ -116,16 +124,24 @@ fn handleGenerate(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     for (cfg.targets) |target| {
         const lang_name = @tagName(target.language);
         std.debug.print("Generating {s} SDK to {s}\n", .{ lang_name, target.output_dir });
+        const span_name = try std.fmt.allocPrint(allocator, "generate {s}", .{lang_name});
+        defer allocator.free(span_name);
+        tracer.start(span_name);
         generator.generateTarget(target) catch |err| {
             std.debug.print("Error generating {s} SDK: {}\n", .{ lang_name, err });
+            try tracer.stop();
             continue;
         };
+        try tracer.stop();
     }
 
     std.debug.print("\n✅ SDK generation completed successfully!\n", .{});
-    
+
     // Print LLM token usage metrics
     generator.printLLMMetrics();
+
+    // Print timing summary
+    tracer.print();
 }
 
 fn handleInit() !void {
