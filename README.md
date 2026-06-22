@@ -96,12 +96,11 @@ All SDKs include:
 
 ## LLM Enhancement
 
-With `--enhance`, each generated source file is post-processed through Claude for:
-- Doc comment improvements
-- Error handling polish
-- Language-idiomatic adjustments
+With `--enhance`, Sterling validates each generated SDK immediately after generation by running the target language's build toolchain. The LLM is only invoked if a build error is detected — it is **not** used to post-process every file by default.
 
-Enhancement is non-destructive — if the API call fails, the original generated code is used.
+When build errors are found, the failing source files are sent to Claude along with the compiler error output as context. Claude fixes the errors and the SDK is re-validated. If the API call fails or the build still doesn't pass, the pre-enhancement output is preserved.
+
+This keeps token usage proportional to actual problems rather than burning tokens on code that already compiles cleanly.
 
 ## Architecture
 
